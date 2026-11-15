@@ -274,6 +274,9 @@ def run(b, base, data, ini, shots):
     # language switch in the tile
     page.locator("#langSelect").select_option("fr")
     expect(page.locator("#newFileBtn")).to_have_text("Nouveau fichier")
+    # the status bar follows at once, not only after the next cursor move (15.11.2026: "9 lines" stayed English)
+    expect(page.locator("#barLines")).to_contain_text("lignes")
+    check(not page.locator("#barPos").inner_text().startswith("Z "), "language switch re-renders the cursor position")
     page.locator("#langSelect").select_option("de")
 
     # light and dark

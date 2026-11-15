@@ -40,7 +40,8 @@ function applyI18n() {
   document.querySelectorAll('[data-i18n-title]').forEach((el) => { el.title = t(el.dataset.i18nTitle); el.setAttribute('aria-label', t(el.dataset.i18nTitle)); });
   $('#langSelect').value = lang;
   for (const x of tabs) x.btn.querySelector('.np-x').setAttribute('aria-label', t('btn.close'));
-  if (active) updateBar();
+  // Position and line count are texts too: without this they kept the previous language until the next cursor move.
+  if (active) { updateBar(); showCursor(active); }
 }
 
 // ---------- errors ----------

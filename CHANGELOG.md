@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.1.3 — 2026-11-15
+
+- After switching the language in the tile, the cursor position and the line
+  count in the status bar follow at once; they kept the previous language until
+  the cursor moved.
+
 ## 0.1.2 — 2026-11-15
 
 - Only the ZimaOS administrator may use the tile; a session of a sub-account
