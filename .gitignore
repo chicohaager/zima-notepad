@@ -1,0 +1,8 @@
+/build/
+/dist/
+/web/node_modules/
+/files/usr/share/casaos/www/modules/notepad/editor.js
+/files/usr/share/casaos/www/modules/notepad/editor.LEGAL.txt
+/test-results/
+/playwright-report/
+__pycache__/

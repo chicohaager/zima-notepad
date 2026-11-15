@@ -1,0 +1,22 @@
+[Unit]
+Description=Notepad tile for ZimaOS (text editor for files under /DATA)
+Documentation=https://github.com/chicohaager/zima-notepad
+After=network-online.target zimaos-gateway.service
+Wants=network-online.target
+RequiresMountsFor=/DATA
+StartLimitIntervalSec=0
+
+[Service]
+Type=simple
+ExecStart=/usr/bin/notepad-web
+Restart=always
+RestartSec=5
+# Root in the host's namespaces: it edits files of every owner under /DATA and keeps their owner.
+# No Protect*/Private* directives — they would give the service a private mount namespace
+# (measured for modmanager on 1.8.0); /DATA confinement is done in the program (internal/files).
+UMask=0022
+RestrictRealtime=true
+LockPersonality=true
+
+[Install]
+WantedBy=multi-user.target

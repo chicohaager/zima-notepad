@@ -1,0 +1,89 @@
+/* Notepad tile: layout on top of the shared Lintux styles (styles.css). */
+:root {
+  --np-editor-bg: #ffffff;
+  --np-gutter-bg: #f4f6f9;
+  --np-active-line: rgba(37, 99, 235, 0.06);
+  --np-selection: rgba(37, 99, 235, 0.22);
+  --np-font-size: 14px;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --np-editor-bg: #161b22;
+    --np-gutter-bg: #1c222b;
+    --np-active-line: rgba(255, 255, 255, 0.05);
+    --np-selection: rgba(96, 165, 250, 0.30);
+  }
+}
+:root[data-theme="dark"] {
+  --np-editor-bg: #161b22;
+  --np-gutter-bg: #1c222b;
+  --np-active-line: rgba(255, 255, 255, 0.05);
+  --np-selection: rgba(96, 165, 250, 0.30);
+}
+
+/* The page is exactly one screen high; the tree and the editor scroll inside it. */
+body { display: flex; flex-direction: column; height: 100vh; }
+.np-main {
+  /* min-height: 0 lets the row shrink below its content; without it a long tree stretched the page (test host). */
+  flex: 1 1 0;
+  min-height: 0;
+  display: grid;
+  grid-template-columns: minmax(200px, 280px) 1fr;
+  /* One row as high as the main area: without it the row grows with a long tree and the page scrolls. */
+  grid-template-rows: minmax(0, 1fr);
+  gap: 12px;
+}
+.np-tree, .np-work { display: flex; flex-direction: column; min-height: 0; padding: 10px; }
+.np-tree-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 6px; }
+.np-tree-body { overflow: auto; flex: 1; min-height: 0; font-size: 13px; }
+.np-node {
+  display: flex; align-items: center; gap: 6px; width: 100%;
+  padding: 3px 6px; border: 0; border-radius: 6px; background: transparent;
+  color: var(--text); text-align: left; cursor: pointer; font: inherit; white-space: nowrap;
+}
+.np-node:hover { background: var(--hover-bg); }
+.np-node.active { background: var(--accent-tint); color: var(--accent-text); }
+.np-node.outside { opacity: 0.5; cursor: not-allowed; }
+.np-node .np-ico { width: 14px; flex: none; text-align: center; color: var(--text-muted); }
+.np-node .np-name { overflow: hidden; text-overflow: ellipsis; }
+.np-children { padding-left: 14px; }
+.np-empty { padding: 3px 6px 3px 26px; color: var(--text-muted); font-style: italic; }
+
+.np-toolbar { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin-bottom: 8px; }
+.np-sep { width: 1px; align-self: stretch; background: var(--card-border); margin: 0 2px; }
+.np-check { display: inline-flex; align-items: center; gap: 4px; font-size: 13px; }
+.np-tabs { display: flex; gap: 2px; overflow-x: auto; border-bottom: 1px solid var(--card-border); }
+.np-tab {
+  display: flex; align-items: center; gap: 6px; padding: 6px 8px 6px 12px;
+  border: 1px solid transparent; border-bottom: 0; border-radius: 8px 8px 0 0;
+  background: transparent; color: var(--text-muted); cursor: pointer; font-size: 13px; white-space: nowrap;
+}
+.np-tab.active { background: var(--np-editor-bg); color: var(--text); border-color: var(--card-border); }
+.np-tab .np-dirty { color: var(--warn); font-weight: bold; }
+.np-tab .np-x { border: 0; background: transparent; color: var(--text-muted); padding: 0 4px; cursor: pointer; font-size: 15px; line-height: 1; }
+.np-tab .np-x:hover { color: var(--danger); }
+.np-editors { position: relative; flex: 1; min-height: 0; border: 1px solid var(--card-border); border-top: 0; border-radius: 0 0 8px 8px; overflow: hidden; }
+.np-editor { position: absolute; inset: 0; }
+.np-editor[hidden] { display: none; }
+.np-welcome { padding: 32px; text-align: center; }
+.np-statusbar { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; padding-top: 8px; font-size: 12px; }
+.np-statusbar select { font-size: 12px; padding: 2px 6px; }
+.np-grow { flex: 1; }
+.np-only-narrow { display: none; }
+
+/* styles.css resets margins; <dialog> centres itself only with margin: auto. */
+.np-dialog { margin: auto; border: 1px solid var(--card-border); border-radius: var(--card-radius); background: var(--card-bg); color: var(--text); max-width: 460px; width: calc(100% - 32px); padding: 18px; }
+.np-dialog::backdrop { background: rgba(0, 0, 0, 0.4); }
+.np-dialog h3 { margin: 0 0 8px; }
+.np-dialog label { display: flex; flex-direction: column; gap: 4px; margin: 10px 0; }
+.np-dialog-actions { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 8px; margin-top: 14px; }
+
+@media (max-width: 760px) {
+  body { height: auto; min-height: 100vh; }
+  .np-main { grid-template-columns: 1fr; grid-template-rows: auto; flex: none; }
+  .np-tree { display: none; max-height: 45vh; }
+  .np-tree.open { display: flex; }
+  .np-work { min-height: 70vh; }
+  .np-only-narrow { display: inline-flex; }
+  .np-sep { display: none; }
+}

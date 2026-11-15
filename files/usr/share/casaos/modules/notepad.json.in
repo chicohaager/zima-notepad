@@ -1,0 +1,18 @@
+{
+  "name": "notepad",
+  "version": "v@VERSION@",
+  "ui": {
+    "name": "notepad",
+    "title": { "en_us": "Notepad", "de_de": "Notepad", "fr_fr": "Notepad", "es_es": "Notepad", "zh_cn": "Notepad" },
+    "prefetch": true,
+    "show": true,
+    "entry": "/modules/notepad/index.html",
+    "icon": "/modules/notepad/appicon.svg",
+    "description": "Text editor for the files under /DATA: tabs, syntax highlighting, find and replace; keeps encoding, line endings and permissions",
+    "formality": {
+      "type": "newtab",
+      "props": { "width": "100vh", "height": "100vh", "hasModalCard": true, "animation": "zoom-in" }
+    }
+  },
+  "services": [ { "name": "notepad-web" } ]
+}

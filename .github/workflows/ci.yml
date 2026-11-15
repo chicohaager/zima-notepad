@@ -1,0 +1,86 @@
+# Notepad CI — runs on every push and pull request; a tag v* also publishes a release.
+#
+#   check    sh check.sh: gofmt, go vet, go test, translations, editor bundle, the
+#            lintux-modkit pin, browser test (Playwright) and the single-file bind mount (Docker)
+#   build    build.sh for amd64 and arm64, then the same image again under umask 002 and 077
+#            (tools/check-reproducible.sh); the images as artifacts (arm64 is built, not
+#            tested on hardware here)
+#   release  on a tag: the images and their .sha256 files as release assets
+#
+# go.mod replaces lintux-modkit with ../lintux-modkit, so every job checks out both
+# repositories side by side, lintux-modkit at the commit in lintux-modkit.ref (build.sh
+# refuses another one), as zima-modmanager does.
+
+name: CI
+
+on:
+  push:
+    branches: [main]
+    tags: ['v*']
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+
+defaults:
+  run:
+    working-directory: zima-notepad
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with: { path: zima-notepad }
+      - run: echo "MODKIT_REF=$(cut -d' ' -f2 lintux-modkit.ref)" >> "$GITHUB_ENV"
+      - uses: actions/checkout@v7
+        with: { repository: chicohaager/lintux-modkit, ref: "${{ env.MODKIT_REF }}", path: lintux-modkit }
+      - uses: actions/setup-go@v7
+        with: { go-version-file: zima-notepad/go.mod, cache: false }
+      - name: Playwright with Chromium
+        run: |
+          python3 -m venv "$RUNNER_TEMP/pw"
+          "$RUNNER_TEMP/pw/bin/pip" install --quiet playwright==1.65.0
+          "$RUNNER_TEMP/pw/bin/python" -m playwright install --with-deps chromium
+          echo "PLAYWRIGHT_PYTHON=$RUNNER_TEMP/pw/bin/python" >> "$GITHUB_ENV"
+      - run: sh check.sh
+
+  build:
+    needs: check
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        arch: [amd64, arm64]
+    steps:
+      - uses: actions/checkout@v7
+        with: { path: zima-notepad }
+      - run: echo "MODKIT_REF=$(cut -d' ' -f2 lintux-modkit.ref)" >> "$GITHUB_ENV"
+      - uses: actions/checkout@v7
+        with: { repository: chicohaager/lintux-modkit, ref: "${{ env.MODKIT_REF }}", path: lintux-modkit }
+      - uses: actions/setup-go@v7
+        with: { go-version-file: zima-notepad/go.mod, cache: false }
+      - run: sudo apt-get update && sudo apt-get install -y squashfs-tools
+      - run: bash tools/check-reproducible.sh ${{ matrix.arch }}
+      - uses: actions/upload-artifact@v7
+        with:
+          name: notepad-${{ matrix.arch }}
+          path: zima-notepad/dist/notepad-${{ matrix.arch }}.raw*
+
+  release:
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v8
+        with:
+          path: dist
+          merge-multiple: true
+      - working-directory: dist
+        run: ls -la && sha256sum -c notepad-amd64.raw.sha256 notepad-arm64.raw.sha256
+      - uses: softprops/action-gh-release@v3
+        with:
+          files: dist/*
+          generate_release_notes: true

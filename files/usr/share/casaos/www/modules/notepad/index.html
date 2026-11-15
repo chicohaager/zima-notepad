@@ -1,0 +1,100 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="robots" content="noindex">
+  <meta http-equiv="cache-control" content="no-cache, no-store, must-revalidate">
+  <title>Notepad</title>
+  <link rel="icon" type="image/svg+xml" href="./appicon.svg">
+  <script>
+    try { var t = localStorage.getItem('notepad.theme'); if (t === 'light' || t === 'dark') document.documentElement.setAttribute('data-theme', t); } catch (e) {}
+  </script>
+  <link rel="stylesheet" href="./styles.css?v=@VERSION@">
+  <link rel="stylesheet" href="./notepad.css?v=@VERSION@">
+</head>
+<body>
+  <header>
+    <div class="title-row">
+      <h1><img src="./appicon.svg" alt=""><span data-i18n="app.title">Notepad</span></h1>
+      <span class="version">v@VERSION@</span>
+      <div class="header-tools">
+        <select id="langSelect" aria-label="Language" data-i18n-title="nav.language">
+          <option value="en">English</option>
+          <option value="de">Deutsch</option>
+          <option value="fr">Français</option>
+          <option value="es">Español</option>
+          <option value="zh">中文</option>
+        </select>
+        <select id="theme-select" aria-label="Theme" data-i18n-title="theme.label">
+          <option value="auto" data-i18n="theme.auto">Theme: auto</option>
+          <option value="light" data-i18n="theme.light">Theme: light</option>
+          <option value="dark" data-i18n="theme.dark">Theme: dark</option>
+        </select>
+      </div>
+    </div>
+    <p class="subtitle" data-i18n="app.subtitle"></p>
+    <div id="status" role="status" aria-live="polite"></div>
+  </header>
+
+  <main class="np-main">
+    <aside id="tree" class="card np-tree" aria-label="Files">
+      <div class="np-tree-head">
+        <span class="section-title" data-i18n="tree.title">Files</span>
+        <button id="treeRefresh" class="btn-secondary btn-small" data-i18n-title="tree.refresh" aria-label="Reload folder">⟳</button>
+      </div>
+      <div id="treeBody" class="np-tree-body"></div>
+    </aside>
+
+    <section class="card np-work">
+      <div class="np-toolbar" role="toolbar">
+        <button id="treeToggle" class="btn-secondary btn-small np-only-narrow" data-i18n="tree.toggle">Files</button>
+        <button id="newFileBtn" class="btn-secondary btn-small" data-i18n="btn.newFile">New file</button>
+        <button id="newFolderBtn" class="btn-secondary btn-small" data-i18n="btn.newFolder">New folder</button>
+        <span class="np-sep"></span>
+        <button id="saveBtn" class="btn-primary btn-small" data-i18n="btn.save" disabled>Save</button>
+        <button id="reloadBtn" class="btn-secondary btn-small" data-i18n="btn.reload" disabled>Reload from disk</button>
+        <span class="np-sep"></span>
+        <button id="searchBtn" class="btn-secondary btn-small" data-i18n="btn.search" disabled>Find / Replace</button>
+        <button id="gotoBtn" class="btn-secondary btn-small" data-i18n="btn.goto" disabled>Go to line</button>
+        <label class="np-check"><input type="checkbox" id="wrapToggle"> <span data-i18n="btn.wrap">Wrap lines</span></label>
+        <button id="fontSmaller" class="btn-secondary btn-small" data-i18n-title="btn.fontSmaller" aria-label="Smaller text">A−</button>
+        <button id="fontLarger" class="btn-secondary btn-small" data-i18n-title="btn.fontLarger" aria-label="Larger text">A+</button>
+      </div>
+      <div id="tabs" class="np-tabs" role="tablist"></div>
+      <div id="editors" class="np-editors">
+        <div id="welcome" class="np-welcome">
+          <h3 data-i18n="welcome.title">No file open</h3>
+          <p class="muted" data-i18n="welcome.text"></p>
+        </div>
+      </div>
+      <div id="statusbar" class="np-statusbar" hidden>
+        <span id="barPos" class="mono"></span>
+        <span id="barLines" class="muted"></span>
+        <span id="barState" class="pill"></span>
+        <span id="barRo" class="pill pill-warn" data-i18n="bar.readOnly" hidden></span>
+        <span class="np-grow"></span>
+        <label><span class="muted" data-i18n="bar.language">Syntax</span> <select id="langPick"></select></label>
+        <label><span class="muted" data-i18n="bar.encoding">Encoding</span> <select id="encPick"></select></label>
+        <label><span class="muted" data-i18n="bar.eol">Line ending</span>
+          <select id="eolPick"><option value="lf">LF (Unix)</option><option value="crlf">CRLF (Windows)</option><option value="cr">CR (Mac classic)</option></select>
+        </label>
+      </div>
+    </section>
+  </main>
+
+  <dialog id="dlg" class="np-dialog">
+    <form method="dialog" id="dlgForm">
+      <h3 id="dlgTitle"></h3>
+      <p id="dlgText"></p>
+      <label id="dlgInputWrap" hidden><span data-i18n="dialog.name">Name</span><input id="dlgInput" autocomplete="off" spellcheck="false"></label>
+      <div class="np-dialog-actions" id="dlgActions"></div>
+    </form>
+  </dialog>
+
+  <script src="./common.js?v=@VERSION@"></script>
+  <script src="./i18n.js?v=@VERSION@"></script>
+  <script src="./editor.js?v=@VERSION@"></script>
+  <script src="./app.js?v=@VERSION@"></script>
+</body>
+</html>
