@@ -18,7 +18,8 @@ Lintux modules. Changes per version: [CHANGELOG](CHANGELOG.md).
 
 ## Features
 
-- **File tree** of `/DATA`; new file and new folder in the selected folder.
+- **File tree** of `/DATA`; new file and new folder in the selected folder. Hidden and system entries
+  (dot names, `lost+found`) stay out of sight until you tick **Show hidden**.
 - **Tabs** with an unsaved-changes marker; closing or leaving with unsaved
   changes asks first.
 - **Syntax highlighting** for 24 languages, chosen from the file name: YAML,

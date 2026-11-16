@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.1.4 — 2026-11-16
+
+- Hidden and system entries (names starting with a dot, `lost+found`) are no
+  longer shown in the file tree; a "Show hidden" checkbox above the tree brings
+  them back, and the choice is remembered. Creating a file or folder whose name
+  starts with a dot switches the display on. A folder with only hidden entries
+  says so instead of looking empty.
+
 ## 0.1.3 — 2026-11-15
 
 - After switching the language in the tile, the cursor position and the line

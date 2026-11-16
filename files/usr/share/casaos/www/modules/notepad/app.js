@@ -17,7 +17,9 @@ let info = { root: '/DATA', encodings: Object.keys(ENC_LABEL), maxText: 32 << 20
 const tabs = [];
 let active = null;
 let currentDir = '/DATA';
-const settings = { wrap: safeGet('notepad.wrap') === '1', font: Number(safeGet('notepad.font')) || 14 };
+const settings = {
+  wrap: safeGet('notepad.wrap') === '1', font: Number(safeGet('notepad.font')) || 14, hidden: safeGet('notepad.hidden') === '1',
+};
 
 // ---------- i18n ----------
 function resolveLanguage() {
@@ -127,21 +129,45 @@ function baseName(p) {
   return p.slice(p.lastIndexOf('/') + 1);
 }
 
+// Hidden: a dot name (Unix convention) or lost+found (fsck's folder, root only). ZimaOS keeps its own data
+// in such entries at the top of /DATA (.casaos, .media, .swapfile, ...).
+function isHiddenName(name) {
+  return name.startsWith('.') || name === 'lost+found';
+}
+
+function emptyNote(cls, text) {
+  const e = document.createElement('div');
+  e.className = cls;
+  e.textContent = text;
+  return e;
+}
+
 async function loadFolder(path, container) {
   const res = await api(`${API}/list?path=${encodeURIComponent(path)}`);
   container.textContent = '';
   if (!res.entries.length) {
-    const e = document.createElement('div');
-    e.className = 'np-empty';
-    e.textContent = t('tree.empty');
-    container.appendChild(e);
+    container.appendChild(emptyNote('np-empty', t('tree.empty')));
     return;
   }
+  const hidden = res.entries.filter((en) => isHiddenName(en.name)).length;
+  if (hidden === res.entries.length) container.appendChild(emptyNote('np-empty np-only-hidden', t('tree.onlyHidden', { n: hidden })));
   for (const en of res.entries) container.appendChild(node(en));
+}
+
+function applyHidden() {
+  $('#tree').classList.toggle('show-hidden', settings.hidden);
+  $('#hiddenToggle').checked = settings.hidden;
+}
+
+function setHidden(on) {
+  settings.hidden = on;
+  safeSet('notepad.hidden', on ? '1' : '0');
+  applyHidden();
 }
 
 function node(en) {
   const wrap = document.createElement('div');
+  if (isHiddenName(en.name)) wrap.className = 'np-hidden-entry';
   const btn = document.createElement('button');
   btn.type = 'button';
   btn.className = 'np-node' + (en.outside ? ' outside' : '');
@@ -408,6 +434,8 @@ async function create(dir) {
   });
   if (!name) return;
   if (name.includes('/') || name === '.' || name === '..') { setStatus(t('error.bad_name'), 'err'); return; }
+  // A new hidden entry would vanish from the tree at once: show hidden entries instead.
+  if (isHiddenName(name) && !settings.hidden) setHidden(true);
   try {
     const r = await api(`${API}/create`, { method: 'POST', body: { path: `${currentDir}/${name}`, dir } });
     setStatus(t('status.created', { name }), 'ok');
@@ -438,11 +466,13 @@ async function init() {
   fillPickers();
   applyFont();
   $('#wrapToggle').checked = settings.wrap;
+  applyHidden();
 
   $('#langSelect').addEventListener('change', (ev) => { lang = ev.target.value; safeSet('notepad.lang', lang); applyI18n(); });
   $('#theme-select').addEventListener('change', () => { for (const x of tabs) x.ed.setDark(isDark()); });
   window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', () => { for (const x of tabs) x.ed.setDark(isDark()); });
   $('#treeToggle').addEventListener('click', () => $('#tree').classList.toggle('open'));
+  $('#hiddenToggle').addEventListener('change', (ev) => setHidden(ev.target.checked));
   $('#treeRefresh').addEventListener('click', () => loadFolder(info.root, $('#treeBody')).catch(fail));
   $('#newFileBtn').addEventListener('click', () => create(false));
   $('#newFolderBtn').addEventListener('click', () => create(true));

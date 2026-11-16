@@ -59,6 +59,14 @@ def main():
     # inside its card, not stretch the page (found on the test host, 14.11.2026).
     for i in range(80):
         (data / f"folder-{i:02d}").mkdir()
+    # Hidden and system entries as on the test host's /DATA (.casaos, .media, .swapfile, lost+found; 16.11.2026):
+    # hidden by default, a checkbox shows them (forum request, 16.11.2026).
+    (data / ".casaos").mkdir()
+    (data / ".swapfile").write_text("x")
+    (data / "lost+found").mkdir()
+    (data / "Documents" / ".hidden-note").write_text("secret\n")
+    (data / "OnlyDots").mkdir()
+    (data / "OnlyDots" / ".env").write_text("A=1\n")
     port = free_port()
     srv = subprocess.Popen([str(HERE / "build" / "notepad-dev"), "-root", str(data), "-web", str(HERE / "build" / "dev-web"),
                             "-addr", f"127.0.0.1:{port}"], stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
@@ -110,6 +118,38 @@ def run(b, base, data, ini, shots):
 
     # F1 tree
     expect(page.locator(".np-node", has_text="Documents")).to_be_visible()
+    tree_click(page, "Documents")
+    expect(page.locator(".np-node", has_text="windows-ansi.ini")).to_be_visible()
+
+    # H hidden and system entries: off by default, the checkbox shows them, the choice is kept
+    def node_shown(name):
+        loc = page.locator(".np-node", has_text=name)
+        return loc.count() > 0 and loc.first.is_visible()
+    check(not page.locator("#hiddenToggle").is_checked(), "H checkbox 'show hidden' is off by default")
+    for name in (".casaos", ".swapfile", "lost+found", ".hidden-note"):
+        check(not node_shown(name), f"H {name} is hidden by default")
+    check(node_shown("AppData") and node_shown("notes.md"), "H ordinary entries stay visible")
+    tree_click(page, "OnlyDots")
+    only = page.locator(".np-only-hidden", has_text="Nur versteckte Einträge (1)")
+    expect(only).to_be_visible(timeout=5000)
+    check(only.count() == 1 and only.is_visible(), "H a folder with only hidden entries says so instead of looking empty")
+    page.locator("#hiddenToggle").check()
+    for name in (".casaos", ".swapfile", "lost+found", ".hidden-note"):
+        check(node_shown(name), f"H {name} shown after ticking the checkbox")
+    check(node_shown("windows-ansi.ini"), "H the opened folder stays open when the checkbox changes")
+    check(node_shown(".env") and not only.is_visible(), "H shown: the hidden entry instead of the note")
+    page.reload()
+    expect(page.locator(".np-node", has_text=".casaos")).to_be_visible()
+    check(page.locator("#hiddenToggle").is_checked(), "H the choice survives a reload")
+    page.locator("#hiddenToggle").uncheck()
+    check(not node_shown(".casaos"), "H unticking hides them again")
+    # creating a dot name with hidden entries off turns the display on, the new entry is not lost from sight
+    page.locator("#newFolderBtn").click()
+    page.locator("#dlgInput").fill(".config")
+    page.locator("#dlgActions button", has_text="Anlegen").click()
+    expect(page.locator(".np-node", has_text=".config")).to_be_visible()
+    check(page.locator("#hiddenToggle").is_checked() and (data / ".config").is_dir(), "H new .config created and shown")
+    page.locator("#hiddenToggle").uncheck()
     tree_click(page, "Documents")
     expect(page.locator(".np-node", has_text="windows-ansi.ini")).to_be_visible()
 

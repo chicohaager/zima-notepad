@@ -51,6 +51,11 @@ body { display: flex; flex-direction: column; height: 100vh; }
 
 .np-toolbar { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin-bottom: 8px; }
 .np-sep { width: 1px; align-self: stretch; background: var(--card-border); margin: 0 2px; }
+/* Hidden and system entries (dot names, lost+found) stay in the DOM: switching keeps opened folders open. */
+.np-tree:not(.show-hidden) .np-hidden-entry { display: none; }
+.np-tree.show-hidden .np-only-hidden { display: none; }
+.np-hidden-entry > .np-node .np-name { opacity: 0.65; }
+.np-hidden-check { margin-left: auto; margin-right: 6px; }
 .np-check { display: inline-flex; align-items: center; gap: 4px; font-size: 13px; }
 .np-tabs { display: flex; gap: 2px; overflow-x: auto; border-bottom: 1px solid var(--card-border); }
 .np-tab {

@@ -4,6 +4,8 @@
 # development build through with a warning.
 #   sh tools/test-modkit-check.sh
 set -eu
+# The cases set MODKIT_DEV themselves; one inherited from the caller (check.sh during a dev build) turned three of them red.
+unset MODKIT_DEV
 cd "$(dirname "$0")/.."
 T=$(mktemp -d)
 trap 'rm -rf "$T"' EXIT
