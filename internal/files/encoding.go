@@ -46,6 +46,19 @@ func Decode(raw []byte) (string, string, error) {
 	return decode1252(raw), "windows-1252", nil
 }
 
+// bomEncoding names the encoding a byte order mark announces, or "".
+func bomEncoding(raw []byte) string {
+	switch {
+	case bytes.HasPrefix(raw, []byte{0xEF, 0xBB, 0xBF}):
+		return "utf-8-bom"
+	case bytes.HasPrefix(raw, []byte{0xFF, 0xFE}):
+		return "utf-16le"
+	case bytes.HasPrefix(raw, []byte{0xFE, 0xFF}):
+		return "utf-16be"
+	}
+	return ""
+}
+
 // Encode turns UTF-8 text into the bytes of an encoding. The encoding is
 // required: a missing one must not silently turn a UTF-16 file into UTF-8.
 func Encode(text, enc string) ([]byte, error) {

@@ -32,8 +32,25 @@ func main() {
 		log.Fatal(err)
 	}
 	noAuth := func(h http.Handler) http.Handler { return h }
-	h := webmod.Server(api.Options(r, "dev"), noAuth, *web)
+	h := hostGuard(*addr, webmod.Server(api.Options(r, "dev"), noAuth, *web))
 	log.Printf("notepad-dev: http://%s/modules/notepad/ (root %s, NO authentication)", *addr, r.Dir)
 	srv := &http.Server{Addr: *addr, Handler: h, ReadHeaderTimeout: 5 * time.Second}
 	log.Fatal(srv.ListenAndServe())
+}
+
+// hostGuard answers only requests for this server's own address. Without it a
+// web page whose name is rebound to 127.0.0.1 (DNS rebinding) is same-origin
+// with the dev server and can read and write every file under -root: the
+// Origin check compares Origin with Host, and the attacker sets both
+// (security review 17.11.2026).
+func hostGuard(addr string, h http.Handler) http.Handler {
+	port := addr[strings.LastIndex(addr, ":"):]
+	allowed := map[string]bool{addr: true, "localhost" + port: true}
+	return http.HandlerFunc(func(w http.ResponseWriter, q *http.Request) {
+		if !allowed[q.Host] {
+			http.Error(w, "notepad-dev answers only "+addr+" and localhost"+port, http.StatusMisdirectedRequest)
+			return
+		}
+		h.ServeHTTP(w, q)
+	})
 }

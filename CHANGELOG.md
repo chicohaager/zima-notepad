@@ -1,5 +1,34 @@
 # Changelog
 
+## Unreleased
+
+Fixes from a full code and security review (17.11.2026):
+
+- A view-only tab (invalid bytes in the chosen encoding, or a write-protected
+  file) could be saved with Ctrl+S after changing its line ending or picking
+  *Convert on save*, which replaced the invalid bytes with U+FFFD. Such a tab is
+  never written now; line ending and *Convert on save* are off there.
+- Saving a text whose bytes exceed 32 MiB (for example as UTF-16) is refused:
+  the file could not have been opened or saved again.
+- Opening a file while it is being saved waits for the save, so it never shows
+  the new start over the old end.
+- A file with a byte order mark and an invalid byte after it opens view-only in
+  the BOM's encoding instead of "not a text file".
+- Text typed while *Reload from disk* is loading is no longer replaced without
+  asking.
+- A new file or folder whose mode or owner cannot be set is removed again, so a
+  retry does not report "already exists".
+- Device nodes and other special files are refused before they are opened.
+- Symlink chains with very long targets are bounded (a folder full of them made
+  the tree view slow).
+- `notepad-dev` (development only) answers only requests for its own address,
+  against DNS rebinding.
+- Where root cannot change the owner of the backup copy (CIFS without unix
+  extensions, NFS with root_squash), saving no longer fails: the short-lived
+  backup stays root's with mode 0600.
+- `check.sh` runs `govulncheck` and `staticcheck` as well, and refuses a
+  GitHub action that is not pinned to a commit SHA; CI pins all of them.
+
 ## 0.1.5 — 2026-11-17
 
 - Files in other encodings: Chinese (GBK, GB18030, Big5), Japanese

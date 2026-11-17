@@ -1,11 +1,15 @@
 # Notepad CI — runs on every push and pull request; a tag v* also publishes a release.
 #
-#   check    sh check.sh: gofmt, go vet, go test, translations, editor bundle, the
+#   check    sh check.sh: gofmt, go vet, go test, govulncheck, staticcheck, translations,
+#            editor bundle, the
 #            lintux-modkit pin, browser test (Playwright) and the single-file bind mount (Docker)
 #   build    build.sh for amd64 and arm64, then the same image again under umask 002 and 077
 #            (tools/check-reproducible.sh); the images as artifacts (arm64 is built, not
 #            tested on hardware here)
 #   release  on a tag: the images and their .sha256 files as release assets
+#
+# Actions are pinned to commit SHAs (the tag in the comment): a moved tag cannot change
+# what builds and publishes the root-run images.
 #
 # go.mod replaces lintux-modkit with ../lintux-modkit, so every job checks out both
 # repositories side by side, lintux-modkit at the commit in lintux-modkit.ref (build.sh
@@ -31,12 +35,12 @@ jobs:
   check:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with: { path: zima-notepad }
       - run: echo "MODKIT_REF=$(cut -d' ' -f2 lintux-modkit.ref)" >> "$GITHUB_ENV"
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with: { repository: chicohaager/lintux-modkit, ref: "${{ env.MODKIT_REF }}", path: lintux-modkit }
-      - uses: actions/setup-go@v7
+      - uses: actions/setup-go@d8cbb8045d7f43706b9177cceb36c1f91a6644d5 # v7.1.0
         with: { go-version-file: zima-notepad/go.mod, cache: false }
       - name: Playwright with Chromium
         run: |
@@ -53,16 +57,16 @@ jobs:
       matrix:
         arch: [amd64, arm64]
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with: { path: zima-notepad }
       - run: echo "MODKIT_REF=$(cut -d' ' -f2 lintux-modkit.ref)" >> "$GITHUB_ENV"
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with: { repository: chicohaager/lintux-modkit, ref: "${{ env.MODKIT_REF }}", path: lintux-modkit }
-      - uses: actions/setup-go@v7
+      - uses: actions/setup-go@d8cbb8045d7f43706b9177cceb36c1f91a6644d5 # v7.1.0
         with: { go-version-file: zima-notepad/go.mod, cache: false }
       - run: sudo apt-get update && sudo apt-get install -y squashfs-tools
       - run: bash tools/check-reproducible.sh ${{ matrix.arch }}
-      - uses: actions/upload-artifact@v7
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: notepad-${{ matrix.arch }}
           path: zima-notepad/dist/notepad-${{ matrix.arch }}.raw*
@@ -74,13 +78,13 @@ jobs:
     permissions:
       contents: write
     steps:
-      - uses: actions/download-artifact@v8
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
           path: dist
           merge-multiple: true
       - working-directory: dist
         run: ls -la && sha256sum -c notepad-amd64.raw.sha256 notepad-arm64.raw.sha256
-      - uses: softprops/action-gh-release@v3
+      - uses: softprops/action-gh-release@8a0cd651e5b2365bd640854a3fa5dfc70e4875f3 # v3.0.4
         with:
           files: dist/*
           generate_release_notes: true

@@ -141,11 +141,17 @@ to any of these by hand.
 
 ## Installation
 
-Requires ZimaOS 1.8 on amd64 or arm64.
+Images for amd64 and arm64, for ZimaOS 1.8 and 1.7.1. What has been run where:
+
+- ZimaOS 1.8.0, amd64 (ZimaBoard 2): tested — install, update, edit and save.
+- ZimaOS 1.7.1: a user reports it running
+  ([community forum, 2026-11-17](https://community.zimaspace.com/t/notepad-like-text-editor/9676));
+  the update steps below were measured on 1.8.0 only.
+- arm64: the image is built and checked by CI, not yet tested on an ARM box.
 
 With the [Module Manager](https://github.com/chicohaager/modmanager) (0.3.3 or
-later): tab **Catalog**, **Notepad**, **Install** — it checks the release
-checksum and refuses an image that would replace files of ZimaOS. With an older
+later, documented for ZimaOS 1.8.0): tab **Catalog**, **Notepad**, **Install**
+— it checks the release checksum and refuses an image that would replace files of ZimaOS. With an older
 Module Manager, add the repository `chicohaager/zima-notepad` in the catalog.
 
 By hand, on the host (for an ARM box replace `amd64` with `arm64`):
@@ -161,7 +167,7 @@ sudo zpkg install /tmp/notepad.raw
 
 To update an installed Notepad by hand, download and check the new image the same
 way, then replace it and restart the service — `--force` alone replaces the file
-but leaves the old process running:
+but leaves the old process running (measured on ZimaOS 1.8.0):
 
 ```sh
 sudo zpkg install --force /tmp/notepad.raw

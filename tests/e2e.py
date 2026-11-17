@@ -356,6 +356,21 @@ def run(b, base, data, ini, shots):
     check(page.locator("#saveBtn").is_disabled() and not page.locator("#barRo").is_visible(),
           "E5 invalid GBK bytes: view only, save disabled, not called write-protected")
     expect(page.locator("#status")).to_contain_text("ungültig")
+    # Review 17.11.2026: Ctrl+S wrote a view-only tab once the line ending or "convert" had marked it modified
+    broken = data / "Charsets" / "broken-gbk.txt"
+    raw_broken = broken.read_bytes()
+    check(page.locator("#eolPick").is_disabled(), "E5b the line ending cannot be changed in a view-only tab")
+    page.locator("#encPick").select_option("utf-8")
+    expect(page.locator("#dlgActions button", has_text="Abbrechen")).to_be_visible()
+    check(page.locator("#dlgActions button", has_text="Beim Speichern umwandeln").count() == 0,
+          "E5b no 'convert on save' in a view-only tab")
+    page.locator("#dlgActions button", has_text="Abbrechen").click()
+    page.evaluate("""() => { const e = document.querySelector('#eolPick'); e.disabled = false; e.value = 'crlf';
+                     e.dispatchEvent(new Event('change')); document.querySelector('#status').textContent = ''; }""")
+    page.locator(".np-editor:not([hidden]) .cm-content").click()
+    page.keyboard.press("Control+s")
+    expect(page.locator("#status")).to_contain_text("ungültig")
+    check(broken.read_bytes() == raw_broken, f"E5b Ctrl+S does not write a view-only tab: {broken.read_bytes()!r}")
     tree_click(page, "CMakeLists.txt")
     expect(page.locator(".np-tab.active")).to_contain_text("CMakeLists.txt")
     check(page.locator("#langPick").input_value() == "cmake", "E6 CMakeLists.txt gets CMake syntax")
@@ -365,6 +380,22 @@ def run(b, base, data, ini, shots):
     expect(page.locator(".np-editor:not([hidden]) .cm-content")).to_contain_text("中文测试")
     check(page.locator("#encPick").input_value() == "gbk", "E7 a page reload reopens the tab in the chosen encoding")
     page.locator(".np-tab", has_text="notes.md").click()
+    # Review 17.11.2026: text typed while a reload was loading was replaced without asking
+    page.evaluate("""() => { const f = window.fetch; window.fetch = (u, o) => String(u).includes('/api/read')
+                     ? new Promise((ok) => setTimeout(() => ok(f(u, o)), 600)) : f(u, o); }""")
+    page.locator("#reloadBtn").click()
+    page.locator(".np-editor:not([hidden]) .cm-content").click()
+    page.keyboard.press("Control+End")
+    page.keyboard.type("TYPED-DURING-RELOAD")
+    expect(page.locator("#dlgTitle")).to_have_text("Von der Platte neu laden?")
+    page.locator("#dlgActions button", has_text="Abbrechen").click()
+    check("TYPED-DURING-RELOAD" in page.locator(".np-editor:not([hidden]) .cm-content").inner_text(),
+          "E8 typing during a reload is kept unless the reload is confirmed")
+    page.locator("#reloadBtn").click()
+    page.locator("#dlgActions button", has_text="Neu laden").click()
+    expect(page.locator("#barState")).to_have_text("Gespeichert")
+    check("TYPED-DURING-RELOAD" not in page.locator(".np-editor:not([hidden]) .cm-content").inner_text(),
+          "E8 a confirmed reload replaces the text")
 
     # language switch in the tile
     page.locator("#langSelect").select_option("fr")

@@ -78,6 +78,9 @@ ZimaOS 1.8 auf amd64 und arm64, als sysext-Image `notepad.raw` (plus `-amd64`, `
 mit `zpkg` bzw. dem Module Manager; Oberfläche über das ZimaOS-Gateway unter `/modules/notepad/`,
 API unter `/notepad/…` (#10, #20).
 
+Nachtrag 17.11.2026: laut Rückmeldung eines Nutzers im ZimaOS-Forum läuft Notepad auch auf ZimaOS 1.7.1;
+README „Installation“ nennt beide Versionen und was auf welcher gemessen ist.
+
 ## 6. Architektur
 
 **Grundform:** eigene Web-App als sysext-Modul mit `lintux-modkit/webmod`: Kachel im Dashboard,

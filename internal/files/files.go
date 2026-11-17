@@ -65,7 +65,8 @@ type Root struct {
 	fs   *os.Root
 	// mu serialises Save and Create: two saves with the same sha must not both
 	// pass the conflict check (review 14.11.2026: 157 of 300 parallel pairs did).
-	mu sync.Mutex
+	// Reads hold it shared, so they never see a save half-written (review 17.11.2026).
+	mu sync.RWMutex
 }
 
 // NewRoot opens dir (symlinks in dir itself are resolved once, at start).
@@ -129,6 +130,11 @@ func (r *Root) rel(p string) (rel, shown string, err error) {
 // maxLinks bounds symlink resolution, as the kernel's ELOOP limit does.
 const maxLinks = 40
 
+// maxParts bounds the path parts one resolve walks: link targets of the form
+// d/../d/../… cost one Lstat per part, so 40 links alone do not bound the work
+// (security review 17.11.2026: 200 listed entries took 3.5 s).
+const maxParts = 4096
+
 // resolve follows the symlinks of rel inside the root and returns a path
 // without symlinks. os.Root refuses every absolute symlink; an absolute link
 // whose target lies inside the root (ln -s /DATA/Media …) is common on a NAS,
@@ -138,7 +144,10 @@ const maxLinks = 40
 func (r *Root) resolve(rel string) (string, error) {
 	done := "."
 	parts := strings.Split(rel, "/")
-	for links := 0; len(parts) > 0; {
+	for links, walked := 0, 0; len(parts) > 0; walked++ {
+		if walked > maxParts {
+			return "", ErrOutside
+		}
 		seg := parts[0]
 		parts = parts[1:]
 		switch seg {
@@ -228,7 +237,22 @@ func mapErr(err error) error {
 // open opens a path inside the root. O_NONBLOCK keeps a FIFO from blocking
 // the open; it has no effect on regular files and folders.
 func (r *Root) open(rel string, flag int) (*os.File, fs.FileInfo, error) {
-	f, err := r.fs.OpenFile(rel, flag|syscall.O_NONBLOCK, 0)
+	h, err := r.fs.OpenFile(rel, oPath|syscall.O_NOFOLLOW|syscall.O_CLOEXEC, 0)
+	if err != nil {
+		return nil, nil, mapErr(err)
+	}
+	defer func() { _ = h.Close() }() // O_PATH handle: nothing to flush
+	hst, err := h.Stat()
+	if err != nil {
+		return nil, nil, err
+	}
+	// Only regular files and folders are opened for data: opening a device node
+	// (a container's mknod in a bind mount) can have side effects — a watchdog
+	// arms, a tty becomes the controlling terminal (security review 17.11.2026).
+	if m := hst.Mode(); !m.IsRegular() && !m.IsDir() {
+		return nil, nil, ErrBinary
+	}
+	f, err := reopen(h, flag|syscall.O_NONBLOCK)
 	if err != nil {
 		return nil, nil, mapErr(err)
 	}
@@ -238,6 +262,19 @@ func (r *Root) open(rel string, flag int) (*os.File, fs.FileInfo, error) {
 		return nil, nil, err
 	}
 	return f, st, nil
+}
+
+// oPath is O_PATH (0x200000 on linux/amd64 and linux/arm64; package syscall
+// names it only for arm64): a handle that names the file without opening it.
+const oPath = 0x200000
+
+// reopen is a hook for tests: they count the opens for data.
+var reopen = reopenFD
+
+// reopenFD opens the file an O_PATH handle names, through /proc/self/fd: the
+// same inode, whatever happened to the path since.
+func reopenFD(h *os.File, flag int) (*os.File, error) {
+	return os.OpenFile(fmt.Sprintf("/proc/self/fd/%d", h.Fd()), flag|syscall.O_NOCTTY|syscall.O_CLOEXEC, 0)
 }
 
 // Entry is one line of a folder listing.
@@ -273,7 +310,8 @@ func (r *Root) List(p string) (string, []Entry, error) {
 	}
 	out := make([]Entry, 0, len(des))
 	for _, de := range des {
-		info, err := de.Info()
+		// Not de.Info(): it would lstat by the reopened file's name (/proc/self/fd/N).
+		info, err := r.fs.Lstat(path.Join(rel, de.Name()))
 		if err != nil {
 			continue // removed while listing
 		}
@@ -290,11 +328,15 @@ func (r *Root) List(p string) (string, []Entry, error) {
 		}
 		out = append(out, e)
 	}
+	keys := make(map[string]string, len(out)) // one ToLower per entry, not two per comparison
+	for _, e := range out {
+		keys[e.Name] = strings.ToLower(e.Name)
+	}
 	sort.SliceStable(out, func(i, j int) bool {
 		if out[i].Dir != out[j].Dir {
 			return out[i].Dir
 		}
-		return strings.ToLower(out[i].Name) < strings.ToLower(out[j].Name)
+		return keys[out[i].Name] < keys[out[j].Name]
 	})
 	return shown, out, nil
 }
@@ -356,12 +398,15 @@ func (r *Root) ReadAs(p, enc string) (*Doc, error) {
 	if err != nil {
 		return nil, err
 	}
+	r.mu.RLock()
 	f, st, err := r.open(rel, os.O_RDONLY)
 	if err != nil {
+		r.mu.RUnlock()
 		return nil, err
 	}
-	defer func() { _ = f.Close() }() // read, or written and synced before: a close error adds nothing
 	raw, err := readText(f, st)
+	_ = f.Close() // only read: a close error adds nothing
+	r.mu.RUnlock()
 	if err != nil {
 		return nil, err
 	}
@@ -370,6 +415,13 @@ func (r *Root) ReadAs(p, enc string) (*Doc, error) {
 	if enc == "" {
 		text, enc, err = Decode(raw)
 		guessed = enc == "windows-1252" && Doubtful1252(raw)
+		// A BOM names the encoding; with invalid bytes after it the file still
+		// opens, view-only, and can be reopened in another one (review 17.11.2026).
+		if b := bomEncoding(raw); errors.Is(err, ErrBinary) && b != "" {
+			var lossless bool
+			text, lossless, err = DecodeAs(raw, b)
+			enc, lossy = b, !lossless
+		}
 	} else {
 		var lossless bool
 		text, lossless, err = DecodeAs(raw, enc)
@@ -453,6 +505,9 @@ func (r *Root) Save(q SaveRequest) (*Saved, error) {
 	if err != nil {
 		return nil, err
 	}
+	if len(data) > MaxText { // could not be opened or saved over again (review 17.11.2026)
+		return nil, ErrTooLarge
+	}
 	if err := r.saveInPlace(f, st, path.Dir(rel), path.Dir(shown), cur, data); err != nil {
 		return nil, err
 	}
@@ -526,13 +581,24 @@ func (r *Root) removeBackup(rel, dirShown, name string) {
 	}
 }
 
-func writeBackup(bak *os.File, st fs.FileInfo, old []byte) error {
+// ownBackup is a hook for tests: they make the chown fail.
+var ownBackup = ownBackupDefault
+
+// ownBackupDefault gives the backup the target's owner (as root).
+func ownBackupDefault(bak *os.File, st fs.FileInfo) error {
 	if sys, ok := st.Sys().(*syscall.Stat_t); ok && os.Geteuid() == 0 {
-		if err := bak.Chown(int(sys.Uid), int(sys.Gid)); err != nil {
-			return err
-		}
+		return bak.Chown(int(sys.Uid), int(sys.Gid))
 	}
-	if err := bak.Chmod(st.Mode().Perm()); err != nil {
+	return nil
+}
+
+func writeBackup(bak *os.File, st fs.FileInfo, old []byte) error {
+	// Where root cannot chown (CIFS without unix extensions, NFS with
+	// root_squash) the backup stays root's with mode 0600 instead of failing
+	// every save; the target itself keeps its owner, it is written in place.
+	if err := ownBackup(bak, st); err != nil {
+		log.Printf("[notepad-web] backup owner not set (%v); it stays root's, mode 0600", err)
+	} else if err := bak.Chmod(st.Mode().Perm()); err != nil {
 		return err
 	}
 	if _, err := bak.Write(old); err != nil {
@@ -602,14 +668,30 @@ func (r *Root) Create(p string, dir bool) (string, error) {
 	}
 	f := os.NewFile(uintptr(fd), shown)
 	defer func() { _ = f.Close() }() // read, or written and synced before: a close error adds nothing
-	// The process umask must not decide the mode (a umask of 077 would make the file unreadable for the share's users).
-	if err := f.Chmod(mode); err != nil {
+	if err := fixCreated(f, mode, pst); err != nil {
+		// Do not leave an entry behind that a retry would report as existing.
+		if rerr := r.fs.Remove(path.Join(dirRel, name)); rerr != nil {
+			log.Printf("[notepad-web] remove %s after failed create: %v", shown, rerr)
+		}
 		return "", err
 	}
-	if sys, ok := pst.Sys().(*syscall.Stat_t); ok && os.Geteuid() == 0 {
+	return shown, nil
+}
+
+// fixCreated is a hook for tests: they make it fail.
+var fixCreated = fixMode
+
+// fixMode sets the mode of a new entry and, as root, the owner of its parent.
+// The process umask must not decide the mode (a umask of 077 would make the
+// file unreadable for the share's users).
+func fixMode(f *os.File, mode os.FileMode, parent fs.FileInfo) error {
+	if err := f.Chmod(mode); err != nil {
+		return err
+	}
+	if sys, ok := parent.Sys().(*syscall.Stat_t); ok && os.Geteuid() == 0 {
 		if err := f.Chown(int(sys.Uid), int(sys.Gid)); err != nil {
-			return "", fmt.Errorf("set owner: %w", err)
+			return fmt.Errorf("set owner: %w", err)
 		}
 	}
-	return shown, nil
+	return nil
 }

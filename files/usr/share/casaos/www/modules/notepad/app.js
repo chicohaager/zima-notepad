@@ -239,6 +239,11 @@ function encodingNotice(tab) {
   else if (tab.guessed) setStatus(t('status.guessed', { name: tab.name }), 'err');
 }
 
+function readOnlyNotice(tab) {
+  if (tab.lossy) encodingNotice(tab);
+  else setStatus(t('error.read_only'), 'err');
+}
+
 async function openFile(path, enc = '') {
   const open = tabs.find((x) => x.path === path);
   if (open) { activate(open); return; }
@@ -346,6 +351,7 @@ function updateBar() {
   $('#barGuess').hidden = !tab.guessed;
   $('#barLossy').hidden = !tab.lossy;
   $('#saveBtn').disabled = tab.readOnly;
+  $('#eolPick').disabled = tab.readOnly;
   $('#langPick').value = tab.language;
   $('#encPick').value = tab.enc;
   $('#eolPick').value = tab.eol;
@@ -383,6 +389,9 @@ async function save(tab, force = false) {
 }
 
 async function doSave(tab, force) {
+  // A view-only tab is never written, whatever marked it modified (review 17.11.2026: Ctrl+S
+  // wrote U+FFFD over the invalid bytes of a lossy tab after a line-ending change).
+  if (tab.readOnly) { readOnlyNotice(tab); return false; }
   if (!force && !isDirty(tab)) { setStatus(t('status.unchanged')); return true; }
   // What is sent is what counts as saved: typing during the request keeps the tab modified.
   const doc = tab.ed.view.state.doc;
@@ -415,7 +424,7 @@ async function doSave(tab, force) {
         buttons: [{ label: t('btn.cancel'), value: '' }, { label: t('btn.reload'), value: 'reload' }, { label: t('btn.overwrite'), value: 'overwrite', kind: 'danger' }],
       });
       if (v === 'overwrite') return doSave(tab, true);
-      if (v === 'reload') { await reload(tab, true); }
+      if (v === 'reload') { await reload(tab, true, undefined, true); } // inside this save: do not wait for it
       return false;
     }
     fail(e, tab);
@@ -424,7 +433,8 @@ async function doSave(tab, force) {
 }
 
 // enc: "" detects again, an encoding reads the bytes in it ("Reopen"); default: as the tab was opened.
-async function reload(tab, confirmed = false, enc = tab && tab.readEnc) {
+// inSave: called from the conflict dialog of a running save, which must not be waited for.
+async function reload(tab, confirmed = false, enc = tab && tab.readEnc, inSave = false) {
   if (!tab) return;
   if (tab.dirty && !confirmed) {
     const v = await ask({
@@ -434,7 +444,18 @@ async function reload(tab, confirmed = false, enc = tab && tab.readEnc) {
     if (!v) { if (tab === active) updateBar(); return; }
   }
   try {
+    // A running save would set sha and saved text after the reload: let it finish first.
+    if (tab.saving && !inSave) await tab.saving;
+    const before = tab.ed.view.state.doc;
     const d = await api(readUrl(tab.path, enc));
+    // Typed while the file was loading: ask before that text is replaced (review 17.11.2026).
+    if (tab.ed.view.state.doc !== before) {
+      const v = await ask({
+        title: t('dialog.reloadTitle'), text: t('dialog.reloadText', { name: tab.name }),
+        buttons: [{ label: t('btn.cancel'), value: '' }, { label: t('btn.reload'), value: 'reload', kind: 'danger' }],
+      });
+      if (!v) { if (tab === active) updateBar(); return; }
+    }
     tab.readEnc = enc || '';
     tab.guessed = !!d.guessed;
     tab.lossy = !!d.lossy;
@@ -459,7 +480,11 @@ async function pickEncoding(tab, enc) {
   const label = ENC_LABEL[enc] || enc;
   const v = await ask({
     title: t('dialog.encTitle', { enc: label }), text: t('dialog.encText', { enc: label }),
-    buttons: [{ label: t('btn.cancel'), value: '' }, { label: t('btn.convert'), value: 'convert' }, { label: t('btn.reopen'), value: 'reopen', kind: 'primary' }],
+    buttons: [
+      { label: t('btn.cancel'), value: '' },
+      ...(tab.readOnly ? [] : [{ label: t('btn.convert'), value: 'convert' }]), // a view-only tab is never saved
+      { label: t('btn.reopen'), value: 'reopen', kind: 'primary' },
+    ],
   });
   if (v === 'convert') { tab.enc = enc; refreshDirty(tab); return; }
   if (v === 'reopen') { await reload(tab, false, enc); return; }
