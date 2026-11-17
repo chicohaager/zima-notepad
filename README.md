@@ -159,6 +159,15 @@ mv notepad-amd64.raw notepad.raw            # zpkg takes the module name from th
 sudo zpkg install /tmp/notepad.raw
 ```
 
+To update an installed Notepad by hand, download and check the new image the same
+way, then replace it and restart the service — `--force` alone replaces the file
+but leaves the old process running:
+
+```sh
+sudo zpkg install --force /tmp/notepad.raw
+sudo systemctl restart notepad-web
+```
+
 The tile appears in the dashboard as **Notepad**. The module keeps no data of
 its own (theme, font size and open tabs live in the browser), so
 `sudo zpkg remove notepad` removes it completely.
