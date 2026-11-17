@@ -174,7 +174,9 @@ sudo zpkg install --force /tmp/notepad.raw
 sudo systemctl restart notepad-web
 ```
 
-The tile appears in the dashboard as **Notepad**. The module keeps no data of
+Reload the dashboard page, then the tile **Notepad** is there — an open dashboard
+does not show a newly installed module by itself (measured on ZimaOS 1.8.0: no tile
+after 120 s, the tile after a reload). The module keeps no data of
 its own (theme, font size and open tabs live in the browser), so
 `sudo zpkg remove notepad` removes it completely.
 
