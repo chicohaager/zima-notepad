@@ -1,5 +1,29 @@
 # Changelog
 
+## 0.1.5 — 2026-11-17
+
+- Files in other encodings: Chinese (GBK, GB18030, Big5), Japanese
+  (Shift_JIS, EUC-JP), Korean (EUC-KR), Cyrillic (Windows-1251, ISO-8859-5,
+  KOI8-R) and Central European (Windows-1250, ISO-8859-2) text used to open
+  silently as Windows-1252 and showed wrong characters. The status bar now says
+  **Encoding guessed** when the bytes look like such an encoding, and picking an
+  encoding offers *Reopen* (read the bytes in it) or *Convert on save*. A file
+  whose bytes are not valid in the chosen encoding opens view-only. German,
+  French or Spanish ANSI files open without the note. New dependency:
+  `golang.org/x/text` v0.44.0; its licence is in `THIRD-PARTY.txt`.
+- CMake syntax for `CMakeLists.txt` and `.cmake`.
+
+- A link `/modules/notepad/?open=/DATA/<path>` opens that file in a tab;
+  `?new=/DATA/<folder>` asks for a name and creates a file in that folder. The
+  parameter is removed from the address afterwards, so a reload does not open
+  or ask again.
+- `tools/files-menu/`: an optional, separate sysext `notepad-files-menu` that
+  adds "Open with Notepad" to the right-click and three-dot menu of a file and
+  "New text file" to the menu of the empty area and the new-folder drop-down of
+  the ZimaOS Files app. The Files app has no extension point, so it overlays
+  patched copies of IceWhale's bundles and must be rebuilt for each Files build;
+  it is not part of the release.
+
 ## 0.1.4 — 2026-11-16
 
 - Hidden and system entries (names starting with a dot, `lost+found`) are no

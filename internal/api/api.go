@@ -136,7 +136,8 @@ func (h *handlers) read(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	h.text(w, r, func() {
-		d, err := h.root.Read(r.URL.Query().Get("path"))
+		q := r.URL.Query()
+		d, err := h.root.ReadAs(q.Get("path"), q.Get("encoding"))
 		if err != nil {
 			fail(w, err)
 			return

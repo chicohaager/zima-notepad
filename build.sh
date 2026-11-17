@@ -32,6 +32,7 @@ mkdir -p build/root/usr/share/doc/notepad
 cp README.md build/root/usr/share/doc/notepad/README
 cp LICENSE build/root/usr/share/doc/notepad/LICENSE
 node tools/third-party.mjs build/editor-meta.json > build/root/usr/share/doc/notepad/THIRD-PARTY.txt
+sh tools/go-licenses.sh >> build/root/usr/share/doc/notepad/THIRD-PARTY.txt
 # The tile: module JSON (its "services" make zpkg enable and start notepad-web), UI files, shared common.js/styles.css.
 sh "$MODKIT/sysext/add-web.sh" notepad build/root "$VERSION"
 # -buildvcs=false: without it Go stamps the commit and "dirty" into the binary, so a rebuild from the

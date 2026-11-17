@@ -253,3 +253,41 @@ func TestAtMostTwoTextRequestsRunAtOnce(t *testing.T) {
 		t.Fatalf("read after the writes: %d", res.StatusCode)
 	}
 }
+
+// A GBK file: detection guesses Windows-1252 and says so; ?encoding=gbk reads
+// it as GBK, a write in GBK stores GBK bytes, an unknown encoding is a 400.
+func TestReopenWithEncodingOverHTTP(t *testing.T) {
+	s, data := server(t)
+	p := data + "/AppData/zh.txt"
+	gbk := []byte{0xD6, 0xD0, 0xCE, 0xC4, '\n'} // 中文 (iconv -t GBK)
+	if err := os.WriteFile(p, gbk, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	read := s.URL + "/notepad/api/read?path=" + url.QueryEscape(p)
+	res, d := do(t, "GET", read, "", auth)
+	if res.StatusCode != 200 || d["encoding"] != "windows-1252" || d["guessed"] != true {
+		t.Fatalf("detect: %d %v", res.StatusCode, d)
+	}
+	res, d = do(t, "GET", read+"&encoding=gbk", "", auth)
+	if res.StatusCode != 200 || d["encoding"] != "gbk" || d["text"] != "中文\n" || d["guessed"] != nil || d["lossy"] != nil {
+		t.Fatalf("reopen: %d %v", res.StatusCode, d)
+	}
+	q := url.Values{"path": {p}, "sha": {d["sha"].(string)}, "encoding": {"gbk"}, "eol": {"lf"}}
+	res, w := do(t, "POST", s.URL+"/notepad/api/write?"+q.Encode(), "中文中\n", map[string]string{
+		"Authorization": "Bearer good", "Content-Type": "text/plain;charset=UTF-8", "Origin": strings.TrimPrefix(s.URL, "http://"),
+	})
+	if res.StatusCode != 200 {
+		t.Fatalf("write: %d %v", res.StatusCode, w)
+	}
+	if b, _ := os.ReadFile(p); string(b) != "\xD6\xD0\xCE\xC4\xD6\xD0\n" {
+		t.Fatalf("on disk: %x", b)
+	}
+	res, d = do(t, "GET", read+"&encoding=ebcdic", "", auth)
+	if res.StatusCode != http.StatusBadRequest {
+		t.Fatalf("unknown encoding: %d %v", res.StatusCode, d)
+	}
+	res, d = do(t, "GET", s.URL+"/notepad/api/info", "", auth)
+	if encs, _ := d["encodings"].([]any); res.StatusCode != 200 || len(encs) != len(files.Encodings) {
+		t.Fatalf("info: %d %v", res.StatusCode, d["encodings"])
+	}
+}

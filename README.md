@@ -22,16 +22,27 @@ Lintux modules. Changes per version: [CHANGELOG](CHANGELOG.md).
   (dot names, `lost+found`) stay out of sight until you tick **Show hidden**.
 - **Tabs** with an unsaved-changes marker; closing or leaving with unsaved
   changes asks first.
-- **Syntax highlighting** for 24 languages, chosen from the file name: YAML,
+- **Syntax highlighting** for 25 languages, chosen from the file name: YAML,
   JSON, INI/`.conf`/systemd units, shell, Nginx, Dockerfile, TOML, Markdown,
   HTML, CSS, JavaScript/TypeScript, Python, Go, Rust, C/C++, Java, PHP, SQL,
-  XML, Lua, Perl, PowerShell, diff.
+  XML, Lua, Perl, PowerShell, CMake (`CMakeLists.txt`, `.cmake`), diff; any
+  other file opens as plain text, and the status bar switches the syntax by hand.
 - **Find and replace** (regular expressions, case, whole word), **go to line**,
   bracket matching, code folding, multiple cursors, line wrap, font size.
 - **Saving that changes only what you changed**
   - Encoding detected and kept: UTF-8 (with or without BOM), UTF-16 LE/BE,
-    Windows-1252. A character the encoding cannot store is refused with its
-    line number instead of being lost; switch the encoding in the status bar.
+    Windows-1252. A file that is none of the first three is read as
+    Windows-1252; when its bytes look like another encoding (Chinese, Japanese,
+    Korean, Cyrillic), the status bar says **Encoding guessed**. German, French
+    or Spanish ANSI files open without that note.
+  - **Reopen with encoding**: pick GB18030, GBK, Big5, Shift_JIS, EUC-JP,
+    EUC-KR, Windows-1250/1251, ISO-8859-2/-5/-15 or KOI8-R in the status bar
+    and choose *Reopen* to read the same bytes in it (or *Convert on save* to
+    write the text in it). Bytes that are not valid in the chosen encoding open
+    the file view-only, so saving cannot change them. The tab remembers the
+    choice across a page reload.
+  - A character the encoding cannot store is refused with its line number
+    instead of being lost.
   - Line endings LF, CRLF or CR detected and kept (mixed endings are reported).
   - Written in place, so the file keeps its inode, mode, owner and group — a
     container that mounts this one file sees the change. The old content is
@@ -88,6 +99,34 @@ sudo zpkg install /tmp/notepad.raw
 The tile appears in the dashboard as **Notepad**. The module keeps no data of
 its own (theme, font size and open tabs live in the browser), so
 `sudo zpkg remove notepad` removes it completely.
+
+### Opening a file from the Files app
+
+`/modules/notepad/?open=/DATA/<path>` opens that file in a tab;
+`/modules/notepad/?new=/DATA/<folder>` asks for a name and creates a text file
+there. Both work for links and bookmarks.
+
+The ZimaOS Files app has no extension point for its menus, so an "Open with
+Notepad" entry there needs a change to IceWhale's code. `tools/files-menu/`
+builds a separate, optional sysext `notepad-files-menu` for your own hosts: it
+overlays patched copies of the Files bundles that add "Open with Notepad" to the
+right-click and three-dot menu of a file on ZimaOS-HD (`/DATA`), and "New text
+file" after "New folder" in the menu of the empty area and in the drop-down of
+the new-folder button. The Files list shows the new file after **Refresh**. It
+is not part of the release, works only for the Files builds it was made from,
+and after a Files update the entries are gone (the Files app itself keeps
+working) until it is rebuilt from the new bundles:
+
+```sh
+scp '<user>@<host>:/usr/share/casaos/www/modules/icewhale_files/assets/Files-*.js' /tmp/files/
+scp '<user>@<host>:/usr/share/casaos/www/modules/icewhale_files/assets/main-*.js' /tmp/files/
+sh tools/files-menu/build.sh amd64 /tmp/files/*.js   # build/files-menu/out/notepad-files-menu-amd64.raw
+# on the host, after copying the image to /tmp/notepad-files-menu.raw:
+sudo zpkg install /tmp/notepad-files-menu.raw   # remove: sudo zpkg remove notepad-files-menu
+```
+
+A browser that loaded the Files app before may keep the old bundle for a while
+(the server sends it without `Cache-Control`); a hard reload fetches the new one.
 
 ## Development
 

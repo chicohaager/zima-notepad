@@ -13,6 +13,7 @@ unformatted=$(gofmt -l cmd internal)
 go vet ./...
 go test -count=1 ./...
 python3 tools/check-i18n.py
+python3 tools/files-menu/test_patch.py
 sh tools/test-modkit-check.sh
 sh tools/modkit-check.sh "$MODKIT"
 for f in files/usr/share/casaos/www/modules/notepad/app.js files/usr/share/casaos/www/modules/notepad/i18n.js; do node --check "$f"; done

@@ -8,12 +8,17 @@ const SHELL_LANG_MAP = { en: 'en', de: 'de', fr: 'fr', es: 'es', zh: 'zh' };
 const API = '/notepad/api';
 const ENC_LABEL = {
   'utf-8': 'UTF-8', 'utf-8-bom': 'UTF-8 BOM', 'utf-16le': 'UTF-16 LE', 'utf-16be': 'UTF-16 BE', 'windows-1252': 'Windows-1252 (ANSI)',
+  'windows-1250': 'Windows-1250 (Central European)', 'windows-1251': 'Windows-1251 (Cyrillic)',
+  'iso-8859-2': 'ISO-8859-2 (Latin-2)', 'iso-8859-5': 'ISO-8859-5 (Cyrillic)', 'iso-8859-15': 'ISO-8859-15 (Latin-9)',
+  'koi8-r': 'KOI8-R (Cyrillic)', gb18030: 'GB18030 (简体中文)', gbk: 'GBK (简体中文)', big5: 'Big5 (繁體中文)',
+  shift_jis: 'Shift_JIS (日本語)', 'euc-jp': 'EUC-JP (日本語)', 'euc-kr': 'EUC-KR (한국어)',
 };
 const EOL_LABEL = { lf: 'LF', crlf: 'CRLF', cr: 'CR' };
 
 let lang = 'en';
 let info = { root: '/DATA', encodings: Object.keys(ENC_LABEL), maxText: 32 << 20 };
-// {path, name, enc, eol, sha, savedDoc, diskEnc, diskEol, dirty, readOnly, language, ed, el, btn, saving}
+// {path, name, enc, eol, sha, savedDoc, diskEnc, diskEol, dirty, readOnly, language, ed, el, btn, saving,
+//  readEnc ("" = detected, else the encoding chosen with "Reopen"), guessed, lossy}
 const tabs = [];
 let active = null;
 let currentDir = '/DATA';
@@ -223,13 +228,24 @@ function isDark() {
   return window.matchMedia('(prefers-color-scheme: dark)').matches;
 }
 
-async function openFile(path) {
+function readUrl(path, enc) {
+  return `${API}/read?path=${encodeURIComponent(path)}${enc ? `&encoding=${encodeURIComponent(enc)}` : ''}`;
+}
+
+// Detection cannot tell GBK, Shift_JIS or ISO-8859-2 from Windows-1252 (no BOM, not UTF-8):
+// the server marks that guess, and a chosen encoding whose bytes do not round-trip opens read-only.
+function encodingNotice(tab) {
+  if (tab.lossy) setStatus(t('status.lossy', { name: tab.name, enc: ENC_LABEL[tab.diskEnc] || tab.diskEnc }), 'err');
+  else if (tab.guessed) setStatus(t('status.guessed', { name: tab.name }), 'err');
+}
+
+async function openFile(path, enc = '') {
   const open = tabs.find((x) => x.path === path);
   if (open) { activate(open); return; }
   setStatus(t('status.loading'));
   let d;
   try {
-    d = await api(`${API}/read?path=${encodeURIComponent(path)}`);
+    d = await api(readUrl(path, enc));
   } catch (e) { fail(e); return; }
   setStatus('');
   // A double click starts two reads; the second finds the tab of the first.
@@ -238,6 +254,7 @@ async function openFile(path) {
   const tab = {
     path: d.path, name: baseName(d.path), enc: d.encoding, eol: d.eol, diskEnc: d.encoding, diskEol: d.eol, sha: d.sha,
     dirty: false, readOnly: !!d.readOnly, language: NotepadEditor.languageFor(d.path),
+    readEnc: enc, guessed: !!d.guessed, lossy: !!d.lossy,
   };
   tab.el = document.createElement('div');
   tab.el.className = 'np-editor';
@@ -263,6 +280,7 @@ async function openFile(path) {
   activate(tab);
   rememberTabs();
   if (d.mixedEol) setStatus(t('status.mixedEol', { name: tab.name, eol: EOL_LABEL[tab.eol] }), 'err');
+  encodingNotice(tab);
 }
 
 function activate(tab) {
@@ -324,7 +342,9 @@ function updateBar() {
   const state = $('#barState');
   state.textContent = tab.dirty ? t('bar.modified') : t('bar.clean');
   state.className = 'pill ' + (tab.dirty ? 'pill-warn' : 'pill-ok');
-  $('#barRo').hidden = !tab.readOnly;
+  $('#barRo').hidden = !tab.readOnly || tab.lossy;
+  $('#barGuess').hidden = !tab.guessed;
+  $('#barLossy').hidden = !tab.lossy;
   $('#saveBtn').disabled = tab.readOnly;
   $('#langPick').value = tab.language;
   $('#encPick').value = tab.enc;
@@ -350,7 +370,7 @@ async function closeTab(tab) {
 }
 
 function rememberTabs() {
-  safeSet('notepad.tabs', JSON.stringify(tabs.map((x) => x.path)));
+  safeSet('notepad.tabs', JSON.stringify(tabs.map((x) => (x.readEnc ? { path: x.path, enc: x.readEnc } : x.path))));
 }
 
 // ---------- save / reload ----------
@@ -403,17 +423,21 @@ async function doSave(tab, force) {
   }
 }
 
-async function reload(tab, confirmed = false) {
+// enc: "" detects again, an encoding reads the bytes in it ("Reopen"); default: as the tab was opened.
+async function reload(tab, confirmed = false, enc = tab && tab.readEnc) {
   if (!tab) return;
   if (tab.dirty && !confirmed) {
     const v = await ask({
       title: t('dialog.reloadTitle'), text: t('dialog.reloadText', { name: tab.name }),
       buttons: [{ label: t('btn.cancel'), value: '' }, { label: t('btn.reload'), value: 'reload', kind: 'danger' }],
     });
-    if (!v) return;
+    if (!v) { if (tab === active) updateBar(); return; }
   }
   try {
-    const d = await api(`${API}/read?path=${encodeURIComponent(tab.path)}`);
+    const d = await api(readUrl(tab.path, enc));
+    tab.readEnc = enc || '';
+    tab.guessed = !!d.guessed;
+    tab.lossy = !!d.lossy;
     tab.sha = d.sha;
     tab.enc = tab.diskEnc = d.encoding;
     tab.eol = tab.diskEol = d.eol;
@@ -422,8 +446,24 @@ async function reload(tab, confirmed = false) {
     tab.ed.setText(d.text);
     tab.savedDoc = tab.ed.view.state.doc;
     refreshDirty(tab);
-    setStatus(t('status.reloaded', { name: tab.name }), 'ok');
-  } catch (e) { fail(e, tab); }
+    rememberTabs();
+    if (enc) setStatus(t('status.reopened', { name: tab.name, enc: ENC_LABEL[d.encoding] || d.encoding }), 'ok');
+    else setStatus(t('status.reloaded', { name: tab.name }), 'ok');
+    encodingNotice(tab);
+  } catch (e) { fail(e, tab); if (tab === active) updateBar(); }
+}
+
+// Picking an encoding asks what is meant, as VS Code's "Reopen with Encoding" / "Save with Encoding":
+// read the same bytes differently (a file shown with wrong characters), or write the text in it on save.
+async function pickEncoding(tab, enc) {
+  const label = ENC_LABEL[enc] || enc;
+  const v = await ask({
+    title: t('dialog.encTitle', { enc: label }), text: t('dialog.encText', { enc: label }),
+    buttons: [{ label: t('btn.cancel'), value: '' }, { label: t('btn.convert'), value: 'convert' }, { label: t('btn.reopen'), value: 'reopen', kind: 'primary' }],
+  });
+  if (v === 'convert') { tab.enc = enc; refreshDirty(tab); return; }
+  if (v === 'reopen') { await reload(tab, false, enc); return; }
+  if (tab === active) updateBar(); // cancelled: the picker shows the tab's encoding again
 }
 
 // ---------- create ----------
@@ -489,7 +529,7 @@ async function init() {
   $('#fontLarger').addEventListener('click', () => { settings.font = Math.min(28, settings.font + 1); safeSet('notepad.font', String(settings.font)); applyFont(); });
   $('#langPick').addEventListener('change', (ev) => { if (active) { active.language = ev.target.value; active.ed.setLanguage(active.language); } });
   // Changing encoding or line ending changes the bytes on disk: isDirty counts it as a modification.
-  $('#encPick').addEventListener('change', (ev) => { if (active) { active.enc = ev.target.value; refreshDirty(active); } });
+  $('#encPick').addEventListener('change', (ev) => { if (active) pickEncoding(active, ev.target.value); });
   $('#eolPick').addEventListener('change', (ev) => { if (active) { active.eol = ev.target.value; refreshDirty(active); } });
   document.addEventListener('keydown', (ev) => {
     // Inside an editor CodeMirror's Mod-s already saved and marked the event handled.
@@ -508,7 +548,33 @@ async function init() {
   } catch (e) { fail(e); return; }
   let saved = [];
   try { saved = JSON.parse(safeGet('notepad.tabs') || '[]'); } catch { saved = []; }
-  for (const p of saved) if (typeof p === 'string') await openFile(p);
+  for (const p of saved) {
+    if (typeof p === 'string') await openFile(p);
+    else if (p && typeof p.path === 'string') await openFile(p.path, typeof p.enc === 'string' ? p.enc : '');
+  }
+  await openFromLink();
+}
+
+// The ZimaOS Files menu links here: "Open with Notepad" with ?open=/DATA/<path>, "New text file" with
+// ?new=/DATA/<folder>. The file opens last, so its tab is the active one; the new-file dialog asks for the name in
+// that folder. The parameters are removed afterwards: a reload restores the tabs from notepad.tabs instead.
+async function openFromLink() {
+  const q = new URLSearchParams(location.search);
+  const p = q.get('open');
+  const dir = q.get('new');
+  if (p === null && dir === null) return;
+  q.delete('open');
+  q.delete('new');
+  const rest = q.toString();
+  history.replaceState(null, '', location.pathname + (rest ? `?${rest}` : '') + location.hash);
+  if (p) await openFile(p);
+  if (dir) {
+    // The server checks the path on create; here only the shape: absolute, inside the root, no trailing slash.
+    const d = dir.replace(/\/+$/, '');
+    if (d !== info.root && !d.startsWith(`${info.root}/`)) { setStatus(t('error.outside'), 'err'); return; }
+    currentDir = d;
+    await create(false);
+  }
 }
 
 init();

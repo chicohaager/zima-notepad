@@ -19,6 +19,7 @@ import sys
 import tempfile
 import time
 from pathlib import Path
+from urllib.parse import quote
 
 from playwright.sync_api import expect, sync_playwright
 
@@ -67,6 +68,12 @@ def main():
     (data / "Documents" / ".hidden-note").write_text("secret\n")
     (data / "OnlyDots").mkdir()
     (data / "OnlyDots" / ".env").write_text("A=1\n")
+    # Files in encodings detection cannot tell from Windows-1252 (Rückmeldung 17.11.2026: GBK showed mojibake, silently).
+    # Bytes as iconv -t GBK writes them: 中文测试 / an invalid GBK pair.
+    (data / "Charsets").mkdir()
+    (data / "Charsets" / "zh-gbk.txt").write_bytes(b"\xd6\xd0\xce\xc4\xb2\xe2\xca\xd4\n")
+    (data / "Charsets" / "broken-gbk.txt").write_bytes(b"a\xfe\xfeb\n")
+    (data / "Charsets" / "CMakeLists.txt").write_text("project(demo)\n")
     port = free_port()
     srv = subprocess.Popen([str(HERE / "build" / "notepad-dev"), "-root", str(data), "-web", str(HERE / "build" / "dev-web"),
                             "-addr", f"127.0.0.1:{port}"], stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
@@ -160,6 +167,9 @@ def run(b, base, data, ini, shots):
     check(page.locator("#encPick").input_value() == "windows-1252", "F2 encoding windows-1252 detected")
     check(page.locator("#eolPick").input_value() == "crlf", "F2 line ending CRLF detected")
     check(page.locator("#langPick").input_value() == "ini", "F2 syntax INI chosen from the extension")
+    # Rückmeldung 17.11.2026: a German ANSI file must not warn (it did for every Windows-1252 file before)
+    check(not page.locator("#barGuess").is_visible() and "Windows-1252 gelesen" not in page.locator("#status").inner_text(),
+          "F2 a German Windows-1252 file opens without the guess warning")
     tree_click(page, "windows-ansi.ini")
     check(page.locator(".np-tab").count() == 1, "F2 second click switches, no second tab")
 
@@ -182,6 +192,8 @@ def run(b, base, data, ini, shots):
     expect(page.locator("#status")).to_contain_text("UTF-8")
     check(ini.read_bytes() == raw, "F3b unencodable character refused, file unchanged")
     page.locator("#encPick").select_option("utf-8")
+    expect(page.locator("#dlgTitle")).to_have_text("Kodierung UTF-8")
+    page.locator("#dlgActions button", has_text="Beim Speichern umwandeln").click()
     page.locator("#saveBtn").click()
     expect(page.locator("#status")).to_contain_text("gespeichert")
     check(ini.read_bytes() == "[general]\r\nname=Grüße\r\nx=ä✓".encode(), "F3b saved as UTF-8 after switching")
@@ -311,6 +323,49 @@ def run(b, base, data, ini, shots):
     expect(page.locator(".np-tab.active")).to_contain_text("notes.md")
     check(page.locator(".np-tab.active").get_attribute("tabindex") == "0", "R7 arrow keys move between tabs")
 
+    # E reopen with encoding: a GBK file is guessed as Windows-1252, "Neu öffnen" as GBK shows the text,
+    # a save keeps GBK bytes, invalid bytes open read-only, a page reload keeps the chosen encoding
+    zh = data / "Charsets" / "zh-gbk.txt"
+    tree_click(page, "Charsets")
+    tree_click(page, "zh-gbk.txt")
+    expect(page.locator(".np-tab.active")).to_contain_text("zh-gbk.txt")
+    expect(page.locator("#status")).to_contain_text("Windows-1252 gelesen")
+    check(page.locator("#barGuess").is_visible() and page.locator("#encPick").input_value() == "windows-1252",
+          "E1 GBK file opens as guessed Windows-1252")
+    page.locator("#encPick").select_option("gbk")
+    expect(page.locator("#dlgTitle")).to_have_text("Kodierung GBK (简体中文)")
+    page.locator("#dlgActions button", has_text="Abbrechen").click()
+    expect(page.locator("#encPick")).to_have_value("windows-1252")
+    check(page.locator("#encPick").input_value() == "windows-1252", "E2 cancel puts the picker back")
+    page.locator("#encPick").select_option("gbk")
+    page.locator("#dlgActions button", has_text="Neu öffnen").click()
+    expect(page.locator(".np-editor:not([hidden]) .cm-content")).to_have_text("中文测试")
+    check(not page.locator("#barGuess").is_visible() and page.locator("#encPick").input_value() == "gbk"
+          and page.locator("#barState").inner_text() == "Gespeichert", "E3 reopened as GBK: text right, not guessed, not modified")
+    page.locator(".np-editor:not([hidden]) .cm-content").click()
+    page.keyboard.press("Control+End")
+    page.keyboard.type("中")
+    page.keyboard.press("Control+s")
+    expect(page.locator("#status")).to_contain_text("gespeichert")
+    check(zh.read_bytes() == b"\xd6\xd0\xce\xc4\xb2\xe2\xca\xd4\n\xd6\xd0", f"E4 saved in GBK: {zh.read_bytes()!r}")
+    tree_click(page, "broken-gbk.txt")
+    expect(page.locator(".np-tab.active")).to_contain_text("broken-gbk.txt")
+    page.locator("#encPick").select_option("gbk")
+    page.locator("#dlgActions button", has_text="Neu öffnen").click()
+    expect(page.locator("#barLossy")).to_be_visible()
+    check(page.locator("#saveBtn").is_disabled() and not page.locator("#barRo").is_visible(),
+          "E5 invalid GBK bytes: view only, save disabled, not called write-protected")
+    expect(page.locator("#status")).to_contain_text("ungültig")
+    tree_click(page, "CMakeLists.txt")
+    expect(page.locator(".np-tab.active")).to_contain_text("CMakeLists.txt")
+    check(page.locator("#langPick").input_value() == "cmake", "E6 CMakeLists.txt gets CMake syntax")
+    page.reload()
+    expect(page.locator(".np-tab", has_text="zh-gbk.txt")).to_have_count(1)
+    page.locator(".np-tab", has_text="zh-gbk.txt").click()
+    expect(page.locator(".np-editor:not([hidden]) .cm-content")).to_contain_text("中文测试")
+    check(page.locator("#encPick").input_value() == "gbk", "E7 a page reload reopens the tab in the chosen encoding")
+    page.locator(".np-tab", has_text="notes.md").click()
+
     # language switch in the tile
     page.locator("#langSelect").select_option("fr")
     expect(page.locator("#newFileBtn")).to_have_text("Nouveau fichier")
@@ -344,6 +399,49 @@ def run(b, base, data, ini, shots):
     expect(page.locator("#status")).to_have_class("err")
     status = page.locator("#status").inner_text()
     check("Administrator" in status and "fehlgeschlagen" not in status, f"403 auth_forbidden shown as admin notice: {status!r}")
+    ctx.close()
+
+    # L deep link from the ZimaOS Files menu ("Open with Notepad"): ?open=<path> opens that file as the active tab
+    ctx = b.new_context(viewport={"width": 1280, "height": 800}, locale="de-DE")
+    page = ctx.new_page()
+    link_errors = []
+    page.on("pageerror", lambda e: link_errors.append(str(e)))
+    target = data / "Documents" / "notes.md"
+    page.goto(base + "index.html?open=" + quote(str(target), safe=""))
+    expect(page.locator(".np-tab.active")).to_contain_text("notes.md")
+    check(page.locator(".np-tab.active").get_attribute("title") == str(target), "L ?open= opens the linked file as the active tab")
+    check("open=" not in page.url, f"L the parameter is removed from the address afterwards: {page.url}")
+    page.reload()
+    expect(page.locator(".np-tab", has_text="notes.md")).to_have_count(1)
+    check(page.locator(".np-tab", has_text="notes.md").count() == 1, "L a reload restores the tab once, no duplicate")
+    # a link outside the root is refused visibly, no tab
+    page.goto(base + "index.html?open=" + quote("/etc/passwd", safe=""))
+    expect(page.locator("#status")).to_have_class("err")
+    check(page.locator(".np-tab", has_text="passwd").count() == 0, "L a link outside the root opens nothing and shows an error")
+    # N "New text file" from the Files menu: ?new=<folder> asks for the name in that folder, creates and opens it
+    folder = data / "Downloads"
+    folder.mkdir(exist_ok=True)
+    page.goto(base + "index.html?new=" + quote(str(folder), safe=""))
+    expect(page.locator("#dlg")).to_be_visible()
+    check(str(folder) in page.locator("#dlgTitle").inner_text(), f"N the dialog names the linked folder: {page.locator('#dlgTitle').inner_text()!r}")
+    page.locator("#dlgInput").fill("aus-files.txt")
+    page.keyboard.press("Enter")
+    expect(page.locator(".np-tab.active")).to_contain_text("aus-files.txt")
+    check((folder / "aus-files.txt").is_file(), "N the file is created in the linked folder")
+    check("new=" not in page.url, f"N the parameter is removed from the address afterwards: {page.url}")
+    page.reload()
+    page.wait_for_timeout(800)
+    check(not page.locator("#dlg").is_visible(), "N a reload does not ask again")
+    # cancelling creates nothing
+    page.goto(base + "index.html?new=" + quote(str(folder), safe=""))
+    expect(page.locator("#dlg")).to_be_visible()
+    page.locator("#dlgActions button", has_text="Abbrechen").click()
+    check(sorted(x.name for x in folder.iterdir()) == ["aus-files.txt"], "N cancel creates nothing")
+    # a folder outside the root: no dialog, a visible error
+    page.goto(base + "index.html?new=" + quote("/etc", safe=""))
+    expect(page.locator("#status")).to_have_class("err")
+    check(not page.locator("#dlg").is_visible(), "N a folder outside the root opens no dialog and shows an error")
+    check(not link_errors, f"L/N no JS errors: {link_errors[:3]}")
     ctx.close()
 
     # phone: tree behind the Files button

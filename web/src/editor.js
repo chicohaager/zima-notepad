@@ -39,6 +39,7 @@ import { diff } from '@codemirror/legacy-modes/mode/diff';
 import { lua } from '@codemirror/legacy-modes/mode/lua';
 import { perl } from '@codemirror/legacy-modes/mode/perl';
 import { powerShell } from '@codemirror/legacy-modes/mode/powershell';
+import { cmake } from '@codemirror/legacy-modes/mode/cmake';
 
 const legacy = (m) => () => StreamLanguage.define(m);
 
@@ -69,6 +70,7 @@ const LANGUAGES = {
   lua: ['Lua', legacy(lua)],
   perl: ['Perl', legacy(perl)],
   powershell: ['PowerShell', legacy(powerShell)],
+  cmake: ['CMake', legacy(cmake)],
 };
 
 const BY_EXT = {
@@ -81,11 +83,12 @@ const BY_EXT = {
   sh: 'shell', bash: 'shell', zsh: 'shell', env: 'shell', profile: 'shell', bashrc: 'shell',
   toml: 'toml', ini: 'ini', conf: 'ini', cfg: 'ini', properties: 'ini', service: 'ini', timer: 'ini',
   mount: 'ini', network: 'ini', desktop: 'ini', diff: 'diff', patch: 'diff', lua: 'lua', pl: 'perl',
-  ps1: 'powershell', psm1: 'powershell',
+  ps1: 'powershell', psm1: 'powershell', cmake: 'cmake',
 };
 const BY_NAME = {
   dockerfile: 'dockerfile', containerfile: 'dockerfile', makefile: 'shell', '.bashrc': 'shell',
   '.profile': 'shell', '.env': 'shell', 'nginx.conf': 'nginx', 'docker-compose.yml': 'yaml', 'compose.yaml': 'yaml',
+  'cmakelists.txt': 'cmake',
 };
 
 export function languageFor(name) {

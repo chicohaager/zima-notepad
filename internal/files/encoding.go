@@ -7,6 +7,13 @@ import (
 	"strings"
 	"unicode/utf16"
 	"unicode/utf8"
+
+	"golang.org/x/text/encoding"
+	"golang.org/x/text/encoding/charmap"
+	"golang.org/x/text/encoding/japanese"
+	"golang.org/x/text/encoding/korean"
+	"golang.org/x/text/encoding/simplifiedchinese"
+	"golang.org/x/text/encoding/traditionalchinese"
 )
 
 func validUTF8(b []byte) bool { return utf8.Valid(b) }
@@ -54,11 +61,143 @@ func Encode(text, enc string) ([]byte, error) {
 	case "windows-1252":
 		return encode1252(text)
 	}
+	if e, ok := legacy[enc]; ok {
+		return encodeLegacy(text, e)
+	}
 	return nil, fmt.Errorf("%w: unknown encoding %q", ErrBadRequest, enc)
 }
 
-// Encodings lists what Encode accepts, for the UI.
-var Encodings = []string{"utf-8", "utf-8-bom", "utf-16le", "utf-16be", "windows-1252"}
+// Encodings lists what Encode and DecodeAs accept, for the UI. Decode only
+// ever detects the first five; the others are used when the user picks them.
+var Encodings = []string{
+	"utf-8", "utf-8-bom", "utf-16le", "utf-16be", "windows-1252",
+	"windows-1250", "windows-1251", "iso-8859-2", "iso-8859-5", "iso-8859-15", "koi8-r",
+	"gb18030", "gbk", "big5", "shift_jis", "euc-jp", "euc-kr",
+}
+
+// legacy are the encodings without a byte order mark that cannot be told
+// apart from Windows-1252 by their bytes, so Decode never guesses them (as
+// VS Code does not without files.autoGuessEncoding). Windows-1252 keeps its
+// own table: x/text leaves its five undefined bytes unmapped, ours keep them.
+var legacy = map[string]encoding.Encoding{
+	"windows-1250": charmap.Windows1250, "windows-1251": charmap.Windows1251,
+	"iso-8859-2": charmap.ISO8859_2, "iso-8859-5": charmap.ISO8859_5, "iso-8859-15": charmap.ISO8859_15,
+	"koi8-r": charmap.KOI8R, "gb18030": simplifiedchinese.GB18030, "gbk": simplifiedchinese.GBK,
+	"big5": traditionalchinese.Big5, "shift_jis": japanese.ShiftJIS, "euc-jp": japanese.EUCJP,
+	"euc-kr": korean.EUCKR,
+}
+
+// Doubtful1252 tells whether bytes that Decode read as Windows-1252 look like
+// another encoding, so the UI should say it guessed. Two signs, measured on
+// the gettext catalogues in /usr/share/locale (17.11.2026, 6 Western languages
+// as cp1252, zh/ja/ko/ru as GBK, Big5, Shift_JIS, EUC-KR, cp1251, KOI8-R):
+//   - a byte Windows-1252 leaves undefined (0x81 0x8D 0x8F 0x90 0x9D): in 0 of
+//     185 Western texts, in 29 of 29 Shift_JIS and 18 of 32 Czech cp1250 ones;
+//   - more than a fifth of the bytes >= 0x80 inside runs of three or more: at
+//     most 4 % in the Western texts (an accented letter sits next to ASCII
+//     letters), at least 51 % in the CJK and Cyrillic ones.
+//
+// A German, French or Spanish ANSI file therefore opens without a warning.
+// ISO-8859-2 Polish looks like Western text by both signs (0 of 33 caught):
+// that one can only be reopened by hand.
+func Doubtful1252(raw []byte) bool {
+	high, inRuns := 0, 0
+	for i := 0; i < len(raw); {
+		if raw[i] < 0x80 {
+			i++
+			continue
+		}
+		j := i
+		for j < len(raw) && raw[j] >= 0x80 {
+			switch raw[j] {
+			case 0x81, 0x8D, 0x8F, 0x90, 0x9D:
+				return true
+			}
+			j++
+		}
+		high += j - i
+		if j-i >= 3 {
+			inRuns += j - i
+		}
+		i = j
+	}
+	return inRuns*5 > high
+}
+
+// DecodeAs reads raw bytes in the encoding the user chose. Bytes that are not
+// valid in it become U+FFFD; lossless reports whether encoding the text again
+// gives back exactly raw — when not, saving would change bytes the user never
+// touched, so the caller opens the file read-only.
+func DecodeAs(raw []byte, enc string) (text string, lossless bool, err error) {
+	switch enc {
+	case "utf-16le", "utf-16be":
+		order, bom := binary.ByteOrder(binary.LittleEndian), []byte{0xFF, 0xFE}
+		if enc == "utf-16be" {
+			order, bom = binary.BigEndian, []byte{0xFE, 0xFF}
+		}
+		text = decodeUTF16Lossy(bytes.TrimPrefix(raw, bom), order)
+	default:
+		if bytes.IndexByte(raw, 0) >= 0 {
+			return "", false, ErrBinary
+		}
+		switch enc {
+		case "utf-8":
+			text = strings.ToValidUTF8(string(raw), "\uFFFD")
+		case "utf-8-bom":
+			text = strings.ToValidUTF8(string(bytes.TrimPrefix(raw, []byte{0xEF, 0xBB, 0xBF})), "\uFFFD")
+		case "windows-1252":
+			text = decode1252(raw)
+		default:
+			e, ok := legacy[enc]
+			if !ok {
+				return "", false, fmt.Errorf("%w: unknown encoding %q", ErrBadRequest, enc)
+			}
+			b, derr := e.NewDecoder().Bytes(raw)
+			if derr != nil {
+				return "", false, ErrBinary
+			}
+			text = string(b)
+		}
+	}
+	back, eerr := Encode(text, enc)
+	return text, eerr == nil && bytes.Equal(back, raw), nil
+}
+
+// decodeUTF16Lossy decodes without a BOM check: lone surrogates and an odd
+// last byte become U+FFFD (DecodeAs then reports the file as not lossless).
+func decodeUTF16Lossy(b []byte, order binary.ByteOrder) string {
+	u := make([]uint16, len(b)/2)
+	for i := range u {
+		u[i] = order.Uint16(b[2*i:])
+	}
+	s := string(utf16.Decode(u))
+	if len(b)%2 == 1 {
+		s += "\uFFFD"
+	}
+	return s
+}
+
+// encodeLegacy encodes with x/text. On a character the encoding cannot store
+// it looks for that character again to name it and its line, as encode1252 does.
+func encodeLegacy(text string, e encoding.Encoding) ([]byte, error) {
+	out, err := e.NewEncoder().Bytes([]byte(text))
+	if err == nil {
+		return out, nil
+	}
+	line := 1
+	for _, r := range text {
+		if r == '\n' {
+			line++
+		}
+		if r < 0x80 {
+			continue
+		}
+		if _, rerr := e.NewEncoder().String(string(r)); rerr != nil {
+			return nil, &UnencodableError{Char: r, Line: line}
+		}
+	}
+	return nil, &UnencodableError{Char: utf8.RuneError, Line: line}
+}
 
 // decodeUTF16 decodes in one pass. A lone surrogate would decode to U+FFFD and
 // change the file on save, so it is refused.

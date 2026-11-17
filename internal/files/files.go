@@ -311,6 +311,12 @@ type Doc struct {
 	Mtime    time.Time `json:"mtime"`
 	Mode     string    `json:"mode"`
 	ReadOnly bool      `json:"readOnly,omitempty"`
+	// Guessed: Decode fell back to Windows-1252 (no BOM, not UTF-8) and the
+	// bytes look like GBK, Shift_JIS, Cyrillic … (Doubtful1252) — the UI says so.
+	Guessed bool `json:"guessed,omitempty"`
+	// Lossy: opened with a chosen encoding that does not give back the same
+	// bytes (invalid sequences); the file is read-only then.
+	Lossy bool `json:"lossy,omitempty"`
 }
 
 func sum(b []byte) string {
@@ -340,8 +346,12 @@ func readText(f *os.File, st fs.FileInfo) ([]byte, error) {
 
 func readOnly(st fs.FileInfo) bool { return st.Mode().Perm()&0o222 == 0 }
 
-// Read opens a text file.
-func (r *Root) Read(p string) (*Doc, error) {
+// Read opens a text file in the detected encoding.
+func (r *Root) Read(p string) (*Doc, error) { return r.ReadAs(p, "") }
+
+// ReadAs opens a text file; enc "" detects the encoding, any other value from
+// Encodings reads the bytes in that one ("reopen with encoding").
+func (r *Root) ReadAs(p, enc string) (*Doc, error) {
 	rel, shown, err := r.locate(p)
 	if err != nil {
 		return nil, err
@@ -355,7 +365,16 @@ func (r *Root) Read(p string) (*Doc, error) {
 	if err != nil {
 		return nil, err
 	}
-	text, enc, err := Decode(raw)
+	guessed, lossy := false, false
+	var text string
+	if enc == "" {
+		text, enc, err = Decode(raw)
+		guessed = enc == "windows-1252" && Doubtful1252(raw)
+	} else {
+		var lossless bool
+		text, lossless, err = DecodeAs(raw, enc)
+		lossy = !lossless
+	}
 	if err != nil {
 		return nil, err
 	}
@@ -366,7 +385,7 @@ func (r *Root) Read(p string) (*Doc, error) {
 	return &Doc{
 		Path: shown, Text: NormalizeEOL(text), Encoding: enc, EOL: eol, MixedEOL: mixed,
 		SHA: sum(raw), Size: st.Size(), Mtime: st.ModTime(), Mode: fmt.Sprintf("%04o", st.Mode().Perm()),
-		ReadOnly: readOnly(st),
+		ReadOnly: readOnly(st) || lossy, Guessed: guessed, Lossy: lossy,
 	}, nil
 }
 
