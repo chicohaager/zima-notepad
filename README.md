@@ -59,6 +59,69 @@ Lintux modules. Changes per version: [CHANGELOG](CHANGELOG.md).
 - **Light and dark theme** in the design of ZFW and the other Lintux modules;
   works on a phone (file tree behind a button).
 
+## Which files open
+
+**Any text file up to 32 MiB under `/DATA` opens** — the file extension decides only the
+syntax colours, never whether a file opens. Files with NUL bytes (images, PDFs, archives,
+Office documents, databases, executables) are refused as binary.
+
+### Encodings
+
+| Encoding | Detected automatically | Can be chosen (Reopen / Convert on save) |
+|---|---|---|
+| UTF-8 | ✓ | ✓ |
+| UTF-8 with BOM | ✓ | ✓ |
+| UTF-16 LE / BE (with BOM) | ✓ | ✓ |
+| Windows-1252 (Western "ANSI") | ✓ — the fallback for everything that is not UTF-8 | ✓ |
+| Windows-1250, ISO-8859-2 (Central European) | — | ✓ |
+| Windows-1251, ISO-8859-5, KOI8-R (Cyrillic) | — | ✓ |
+| ISO-8859-15 (Western with €) | — | ✓ |
+| GB18030, GBK (Simplified Chinese) | — | ✓ |
+| Big5 (Traditional Chinese) | — | ✓ |
+| Shift_JIS, EUC-JP (Japanese) | — | ✓ |
+| EUC-KR (Korean) | — | ✓ |
+
+A file without BOM that is not UTF-8 is read as Windows-1252. If its bytes look like
+Chinese, Japanese, Korean or Cyrillic text, the status bar shows **Encoding guessed**: pick
+the right encoding there and choose **Reopen**. Central European files often look like
+Western text to the detection (Polish ISO-8859-2 always, Czech Windows-1250 in about half of
+the tested texts) and then get no note — reopen them by hand. Line endings LF, CRLF and CR are
+detected and kept.
+
+### Syntax highlighting
+
+The match ignores upper and lower case. Every other file opens as plain text (`.txt`, `.log`,
+`.csv`, files without extension …); the **Syntax** menu in the status bar switches any file
+to any of these by hand.
+
+| Syntax | Extensions | File names |
+|---|---|---|
+| JavaScript | `.js` `.mjs` `.cjs` `.jsx` | |
+| TypeScript | `.ts` `.tsx` | |
+| JSON | `.json` `.jsonc` `.webmanifest` | |
+| YAML | `.yml` `.yaml` | `docker-compose.yml`, `compose.yaml` |
+| Python | `.py` | |
+| Markdown | `.md` `.markdown` | |
+| HTML | `.html` `.htm` `.vue` | |
+| CSS | `.css` `.scss` `.less` | |
+| XML | `.xml` `.svg` `.plist` `.xsd` | |
+| SQL | `.sql` | |
+| PHP | `.php` | |
+| Go | `.go` | |
+| Rust | `.rs` | |
+| C/C++ | `.c` `.h` `.cc` `.cpp` `.hpp` | |
+| Java | `.java` `.kt` | |
+| Shell | `.sh` `.bash` `.zsh` `.env` `.profile` `.bashrc` | `Makefile`, `.bashrc`, `.profile`, `.env` |
+| Nginx | | `nginx.conf`, any `*nginx*.conf` |
+| Dockerfile | | `Dockerfile`, `Dockerfile.*`, `Containerfile` |
+| TOML | `.toml` | |
+| INI / Properties | `.ini` `.conf` `.cfg` `.properties` `.service` `.timer` `.mount` `.network` `.desktop` | |
+| Diff | `.diff` `.patch` | |
+| Lua | `.lua` | |
+| Perl | `.pl` | |
+| PowerShell | `.ps1` `.psm1` | |
+| CMake | `.cmake` | `CMakeLists.txt` |
+
 ## Security
 
 - Every API call needs a valid ZimaOS session token (checked against the

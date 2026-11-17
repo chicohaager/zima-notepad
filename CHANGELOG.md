@@ -12,6 +12,8 @@
   French or Spanish ANSI files open without the note. New dependency:
   `golang.org/x/text` v0.44.0; its licence is in `THIRD-PARTY.txt`.
 - CMake syntax for `CMakeLists.txt` and `.cmake`.
+- README: a table of which files open — encodings and the file names behind each
+  syntax; `tools/check-readme-types.py` (in `check.sh`) keeps it in step with the code.
 
 - A link `/modules/notepad/?open=/DATA/<path>` opens that file in a tab;
   `?new=/DATA/<folder>` asks for a name and creates a file in that folder. The

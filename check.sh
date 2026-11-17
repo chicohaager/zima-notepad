@@ -13,6 +13,7 @@ unformatted=$(gofmt -l cmd internal)
 go vet ./...
 go test -count=1 ./...
 python3 tools/check-i18n.py
+python3 tools/check-readme-types.py
 python3 tools/files-menu/test_patch.py
 sh tools/test-modkit-check.sh
 sh tools/modkit-check.sh "$MODKIT"
