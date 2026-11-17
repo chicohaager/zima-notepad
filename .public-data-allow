@@ -1,0 +1,5 @@
+# Exemptions for check-public-data.py — path-scoped (<path>:<value>), decided 17.11.2026.
+# Copyright line of the maintainer.
+LICENSE:Kuehn
+# Reserved test domain (RFC 2606) in the modkit-check test.
+tools/test-modkit-check.sh:t@example.invalid

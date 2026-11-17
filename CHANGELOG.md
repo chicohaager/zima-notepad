@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.1.6 — 2026-11-17
 
 Fixes from a full code and security review (17.11.2026):
 
